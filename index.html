@@ -8,7 +8,8 @@
     :root { color-scheme: dark; font-family: ui-rounded, system-ui, sans-serif; }
     * { box-sizing: border-box; }
     body { margin: 0; overflow: hidden; background: #09051a; color: #fff; }
-    canvas { display: block; width: 100vw; height: 100vh; }
+    canvas { position: fixed; inset: 0; display: block; width: 100vw; height: 100vh; }
+    canvas[hidden] { display: none; }
     .camera-calibration { position: fixed; z-index: 5; inset: 0; display: grid; place-items: center; padding: 20px; background: #02050dcc; backdrop-filter: blur(10px); }
     .camera-calibration[hidden] { display: none; }
     .calibration-card { width: min(380px, calc(100vw - 40px)); padding: 20px; border: 1px solid #66ffb680; border-radius: 22px; background: #07130fee; box-shadow: 0 24px 80px #000b; text-align: center; }
@@ -62,9 +63,13 @@
     #hud-lives { color: #ff765c; letter-spacing: .08em; }
     @media (max-width: 760px) { .topbar { inset: 10px 10px auto; gap: 8px; } .race-hud { width: 58vw; } .speed-hud { width: 37vw; } #hud-speed { font-size: 38px; } .actions > button { display: none; } .input-switch button { padding-inline: 8px; } .race-heading { padding: 10px 12px 7px; } #hud-stage-name { font-size: 16px; } }
   </style>
+  <script type="importmap">
+    { "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.185.1/build/three.module.js" } }
+  </script>
 </head>
 <body>
-  <canvas id="game" aria-label="Tilt Rush racing game"></canvas>
+  <canvas id="three-game" aria-label="Tilt Rush first-person racing game"></canvas>
+  <canvas id="game" aria-label="Tilt Rush top-down racing game" hidden></canvas>
   <div class="camera-calibration" id="camera-calibration" hidden>
     <section class="calibration-card" role="dialog" aria-modal="true" aria-labelledby="calibration-title">
       <h2 id="calibration-title">Starting camera…</h2>
@@ -93,7 +98,10 @@
       <button id="start" type="button">Start run</button>
     </div>
   </div>
-  <script>
+  <script type="module">
+    import * as THREE from 'three';
+
+    const threeCanvas = document.querySelector('#three-game');
     const canvas = document.querySelector('#game');
     const context = canvas.getContext('2d');
     const status = document.querySelector('#status');
@@ -164,6 +172,45 @@
     let viewMode = 'first-person';
     let lastFrame = performance.now();
 
+    const threeRenderer = new THREE.WebGLRenderer({ canvas: threeCanvas, antialias: true });
+    threeRenderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+    threeRenderer.outputColorSpace = THREE.SRGBColorSpace;
+    const threeScene = new THREE.Scene();
+    threeScene.background = new THREE.Color(0x070b14);
+    threeScene.fog = new THREE.Fog(0x070b14, 24, 105);
+    const threeCamera = new THREE.PerspectiveCamera(66, innerWidth / innerHeight, 0.1, 140);
+    threeCamera.position.set(0, 2.35, 8);
+    threeCamera.lookAt(0, 0.45, -34);
+
+    const hemisphereLight = new THREE.HemisphereLight(0x8fc8ff, 0x24120c, 2.2);
+    threeScene.add(hemisphereLight);
+
+    const road = new THREE.Mesh(
+      new THREE.PlaneGeometry(10, 120),
+      new THREE.MeshStandardMaterial({ color: 0x292d36, roughness: 0.92 })
+    );
+    road.rotation.x = -Math.PI / 2;
+    road.position.z = -52;
+    threeScene.add(road);
+
+    const boundaryGeometry = new THREE.BoxGeometry(0.16, 0.12, 120);
+    const boundaryMaterial = new THREE.MeshStandardMaterial({ color: 0xff7048, emissive: 0x5c1608, emissiveIntensity: 1.1 });
+    for (const side of [-1, 1]) {
+      const boundary = new THREE.Mesh(boundaryGeometry, boundaryMaterial);
+      boundary.position.set(side * 5, 0.07, -52);
+      threeScene.add(boundary);
+    }
+
+    const markerGeometry = new THREE.BoxGeometry(0.09, 0.035, 2.7);
+    const markerMaterial = new THREE.MeshStandardMaterial({ color: 0xe9edf4, emissive: 0x35383d, emissiveIntensity: 0.5 });
+    for (let z = 4; z > -108; z -= 7) {
+      for (const lane of [-1.65, 1.65]) {
+        const marker = new THREE.Mesh(markerGeometry, markerMaterial);
+        marker.position.set(lane, 0.035, z);
+        threeScene.add(marker);
+      }
+    }
+
     const state = {
       mode: 'ready', score: 0, best: Number(localStorage.getItem('tilt-rush-best') || 0), lives: 3, clears: 0, jumps: 0,
       elapsed: 0, speed: 260, spawnTimer: 1.1, spawnIndex: 0, roadOffset: 0, level: 0, previousLevel: 0, levelBlend: 1, levelDistance: 0, totalDistance: 0, levelFlash: 0,
@@ -174,6 +221,10 @@
       width = canvas.width = innerWidth * devicePixelRatio;
       height = canvas.height = innerHeight * devicePixelRatio;
       scale = Math.min(width / 1000, height / 700);
+      threeRenderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+      threeRenderer.setSize(innerWidth, innerHeight, false);
+      threeCamera.aspect = innerWidth / innerHeight;
+      threeCamera.updateProjectionMatrix();
     }
     addEventListener('resize', resize);
     resize();
@@ -399,43 +450,6 @@
       context.restore();
     }
 
-    function perspectivePoint(worldY, laneOffset = 0) {
-      const t = Math.max(0, Math.min(1, (worldY + 110) / 810)); const depth = t * t;
-      const curve = (roadCenter(worldY) - roadCenter(state.player.y)) * depth * .72;
-      const cameraLean = -state.player.lean * (1 - depth) * 34;
-      const playerLane = state.player.x - roadCenter(state.player.y); const roadWidth = 34 + depth * 348;
-      return { x: 500 + curve + cameraLean + (laneOffset - playerLane) / 250 * roadWidth, y: 154 + depth * 546 + (state.player.jumpHeight || 0) * .22, depth };
-    }
-
-    function drawFirstPersonCar(car) {
-      const traffic = trafficTypes[car.type]; const point = perspectivePoint(car.y, (car.laneIndex - 1) * 150); const size = .12 + point.depth * 1.18;
-      if (point.depth <= .01 || point.y > 760) return;
-      context.save(); context.translate(point.x, point.y); context.scale(size, size);
-      context.fillStyle = '#0009'; context.beginPath(); context.ellipse(4, 7, car.width * .53, car.height * .2, 0, 0, Math.PI * 2); context.fill();
-      if (traffic.image.complete && traffic.image.naturalWidth) context.drawImage(traffic.image, -car.width / 2, -car.height / 2, car.width, car.height);
-      else { context.fillStyle = '#d8dee9'; context.fillRect(-car.width / 2, -car.height / 2, car.width, car.height); }
-      context.restore();
-    }
-
-    function renderFirstPerson() {
-      context.setTransform(scale, 0, 0, scale, (width - 1000 * scale) / 2, (height - 700 * scale) / 2);
-      const sky = context.createLinearGradient(0, 0, 0, 700); sky.addColorStop(0, '#02040a'); sky.addColorStop(.42, '#101322'); sky.addColorStop(1, '#06070c'); context.fillStyle = sky; context.fillRect(0, 0, 1000, 700);
-      if (cityImage.complete && cityImage.naturalWidth) { context.globalAlpha = .58; context.drawImage(cityImage, 0, 70, 1000, 630); context.globalAlpha = 1; }
-      const left = []; const right = []; for (let y = -110; y <= 700; y += 20) { left.push(perspectivePoint(y, -250)); right.push(perspectivePoint(y, 250)); }
-      context.beginPath(); context.moveTo(left[0].x, left[0].y); for (const p of left) context.lineTo(p.x, p.y); for (let i = right.length - 1; i >= 0; i--) context.lineTo(right[i].x, right[i].y); context.closePath(); context.fillStyle = '#20232c'; context.fill();
-      context.strokeStyle = '#ff744d'; context.lineWidth = 5; context.shadowColor = '#ff4c2e'; context.shadowBlur = 10;
-      for (const side of [left, right]) { context.beginPath(); context.moveTo(side[0].x, side[0].y); for (const p of side) context.lineTo(p.x, p.y); context.stroke(); } context.shadowBlur = 0;
-      for (const lane of [-75, 75]) for (let y = -70 + state.roadOffset % 150; y < 700; y += 150) { const a = perspectivePoint(y, lane); const b = perspectivePoint(Math.min(700, y + 58), lane); context.strokeStyle = '#e7eaf0cc'; context.lineWidth = 1 + a.depth * 5; context.beginPath(); context.moveTo(a.x, a.y); context.lineTo(b.x, b.y); context.stroke(); }
-      for (let y = -50 + state.roadOffset % 120; y < 700; y += 120) { for (const lane of [-250, 250]) { const p = perspectivePoint(y, lane); context.fillStyle = '#ffb34f'; context.fillRect(p.x - 2 - p.depth * 4, p.y, 4 + p.depth * 8, 2 + p.depth * 12); } }
-      const visibleCars = [...state.obstacles].sort((a, b) => a.y - b.y); for (const car of visibleCars) drawFirstPersonCar(car);
-      context.save(); context.translate(500 + state.player.lean * 30, 650); context.rotate(state.player.lean * .055);
-      const screen = context.createLinearGradient(0, -135, 0, 20); screen.addColorStop(0, '#8feaff18'); screen.addColorStop(1, '#07111ec9'); context.fillStyle = screen; context.beginPath(); context.moveTo(-150, 20); context.lineTo(-105, -120); context.quadraticCurveTo(0, -155, 105, -120); context.lineTo(150, 20); context.closePath(); context.fill(); context.strokeStyle = '#ff563a88'; context.lineWidth = 4; context.stroke();
-      context.strokeStyle = '#151922'; context.lineWidth = 22; context.lineCap = 'round'; context.beginPath(); context.moveTo(-210, 36); context.lineTo(-72, -5); context.lineTo(0, 32); context.lineTo(72, -5); context.lineTo(210, 36); context.stroke();
-      context.fillStyle = '#ff4e31'; context.shadowColor = '#ff4e31'; context.shadowBlur = 16; context.fillRect(-28, 16, 56, 8); context.shadowBlur = 0; context.restore();
-      if (state.player.invulnerable > 0) { context.fillStyle = `rgba(255,55,35,${state.player.invulnerable * .12})`; context.fillRect(0, 0, 1000, 700); }
-      context.setTransform(1, 0, 0, 1, 0, 0);
-    }
-
     function updateHud() {
       const levelProgress = Math.min(100, Math.floor(state.levelDistance / levels[state.level].length * 100));
       const displaySpeed = Math.round(state.speed); const gear = Math.min(6, Math.max(1, Math.floor(displaySpeed / 85)));
@@ -446,7 +460,10 @@
     }
 
     function render() {
-      if (viewMode === 'first-person') { renderFirstPerson(); updateHud(); return; }
+      const firstPerson = viewMode === 'first-person';
+      threeCanvas.hidden = !firstPerson;
+      canvas.hidden = firstPerson;
+      if (firstPerson) { threeRenderer.render(threeScene, threeCamera); updateHud(); return; }
       context.setTransform(scale, 0, 0, scale, (width - 1000 * scale) / 2, (height - 700 * scale) / 2);
       drawCyberCity();
       context.save(); traceRoadSurface(); context.clip();
@@ -626,6 +643,7 @@
 
     window.render_game_to_text = () => JSON.stringify({
       coordinateSystem: 'logical 1000x700; origin top-left; x right; y down', mode: state.mode,
+      rendering: { renderer: viewMode === 'first-person' ? 'three' : 'canvas-2d', camera: viewMode === 'first-person' ? threeCamera.type : 'top-down' },
       player: { type: 'light-cycle', x: +state.player.x.toFixed(1), y: state.player.y, lean: +state.player.lean.toFixed(2), jumpHeight: +(state.player.jumpHeight || 0).toFixed(1), jumpCooldown: +state.player.jumpCooldown.toFixed(2), invulnerable: +state.player.invulnerable.toFixed(2), trailPoints: state.energyTrail.length },
       level: { number: state.level + 1, name: levels[state.level].name, distance: Math.floor(state.levelDistance), target: levels[state.level].length, roadBlend: +state.levelBlend.toFixed(2) }, roadCenterAtPlayer: +roadCenter(state.player.y).toFixed(1), obstacles: state.obstacles.map(o => ({ type: trafficTypes[o.type].name, lane: o.laneIndex, x: +o.x.toFixed(1), y: +o.y.toFixed(1) })), score: Math.floor(state.score),
       best: state.best, lives: state.lives, clears: state.clears, jumps: state.jumps, speed: Math.round(state.speed),

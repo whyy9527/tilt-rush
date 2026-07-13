@@ -1,4 +1,4 @@
-🟡 # Establish the Three.js first-person renderer
+📌 # Establish the Three.js first-person renderer
 
 Created: 2026-07-13
 Source: Engine decision following the first-person V1 evaluation
@@ -39,7 +39,7 @@ When the first-person view renders, use one Three.js scene, perspective camera, 
 - [ ] A straight gray road, both road boundaries, and repeated depth markers are visible.
 - [ ] Switching views shows only the active renderer canvas, and both views remain usable.
 - [ ] Resize and fullscreen continue to fill the viewport without stretching the Three.js camera.
-- [ ] `window.render_game_to_text()` reports `renderer: "three"` and `camera: "PerspectiveCamera"` in first-person mode.
+- [ ] `window.render_game_to_text()` reports `rendering.renderer: "three"` and `rendering.camera: "PerspectiveCamera"` in first-person mode.
 - [ ] The static site runs without a bundler and introduces no browser console errors.
 
 ## Verification Plan
@@ -55,3 +55,10 @@ When the first-person view renders, use one Three.js scene, perspective camera, 
 
 - [0002](0002-curved-elevated-track.md) adds the continuous curved, elevated course after this renderer foundation is pushed.
 - [0003](0003-threejs-rider-steering.md) binds normalized steering and the rider cockpit after the course exists.
+
+## Picked
+
+- Picked at: 2026-07-13 22:35 Asia/Shanghai
+- Owner: Codex `/work.loop`
+- Execution: issue 0001 isolated worktree
+- Notes: First dependency in the renderer migration sequence.

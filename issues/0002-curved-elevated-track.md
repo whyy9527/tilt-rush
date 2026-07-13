@@ -1,4 +1,4 @@
-📌 # Build one curved, elevated Three.js course
+✅ # Build one curved, elevated Three.js course
 
 Created: 2026-07-13
 Source: Split from [issue 0001](0001-threejs-first-person-renderer.md)
@@ -33,11 +33,11 @@ Use one deterministic centerline to generate the road surface, boundaries, and r
 
 ## Acceptance Criteria
 
-- [ ] One continuous road contains a straight, a visible curve, an elevated crest, and a descent.
-- [ ] Forward distance moves the camera continuously along the course without visible geometry seams.
-- [ ] Road boundaries and roadside markers remain aligned through the curve and elevation change.
-- [ ] `window.render_game_to_text()` reports the visible course segment, progress, and elevation.
-- [ ] Existing top-down mode and normalized input state remain unchanged.
+- [x] One continuous road contains a straight, a visible curve, an elevated crest, and a descent.
+- [x] Forward distance moves the camera continuously along the course without visible geometry seams.
+- [x] Road boundaries and roadside markers remain aligned through the curve and elevation change.
+- [x] `window.render_game_to_text()` reports the visible course segment, progress, and elevation.
+- [x] Existing top-down mode and normalized input state remain unchanged.
 
 ## Verification Plan
 
@@ -52,9 +52,13 @@ Use one deterministic centerline to generate the road surface, boundaries, and r
 
 Course generation has a geometry-and-progress verification path independent from renderer initialization and rider steering.
 
-## Picked
+## Resolution
 
-- Picked at: 2026-07-13 22:42 Asia/Shanghai
-- Owner: Codex `/work.loop`
-- Execution: issue 0002 isolated worktree
-- Notes: Issue 0001 is completed and pushed; this is the next dependency in sequence.
+- Closed at: 2026-07-13 22:50 Asia/Shanghai
+- Commit: `794ac2b`
+- Verification:
+  - `git diff --cached --check` — passed
+  - repository Playwright game client — passed start, keyboard input, initial course state, screenshot, and console checks
+  - page-level Playwright course flow — passed straight, curve, climb, crest, descent, endpoint runoff, top-down visibility, telemetry alignment, and console checks
+  - `/work.review staged` — passed with no required findings
+- Notes: One generated centerline now owns the road, boundaries, lane markers, roadside posts, camera progress, and course telemetry; issue 0003 is unblocked.

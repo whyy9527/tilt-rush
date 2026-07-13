@@ -1,4 +1,4 @@
-📌 # Bind normalized steering to the Three.js rider view
+✅ # Bind normalized steering to the Three.js rider view
 
 Created: 2026-07-13
 Source: Split from [issue 0001](0001-threejs-first-person-renderer.md)
@@ -34,13 +34,13 @@ Feed the existing normalized steering value into a course-relative lateral rider
 
 ## Acceptance Criteria
 
-- [ ] Left and right keyboard input move the rider line in opposite course-relative directions.
-- [ ] The cockpit leans with normalized steering while horizon roll remains restrained.
-- [ ] The renderer consumes the existing `[-1, 1]` steering value without changing webcam calibration behavior.
-- [ ] Keyboard control can complete the course from start to finish and restart another run.
-- [ ] Start, fullscreen, and first-person/top-down toggle flows remain usable.
-- [ ] `window.render_game_to_text()` matches the visible rider line, steering, lean, course segment, and mode.
-- [ ] The site remains deployable as static GitHub Pages content.
+- [x] Left and right keyboard input move the rider line in opposite course-relative directions.
+- [x] The cockpit leans with normalized steering while horizon roll remains restrained.
+- [x] The renderer consumes the existing `[-1, 1]` steering value without changing webcam calibration behavior.
+- [x] Keyboard control can complete the course from start to finish and restart another run.
+- [x] Start, fullscreen, and first-person/top-down toggle flows remain usable.
+- [x] `window.render_game_to_text()` matches the visible rider line, steering, lean, course segment, and mode.
+- [x] The site remains deployable as static GitHub Pages content.
 
 ## Verification Plan
 
@@ -55,9 +55,13 @@ Feed the existing normalized steering value into a course-relative lateral rider
 
 Rider input and camera comfort can be verified only after the renderer and course geometry have stable world-space boundaries.
 
-## Picked
+## Resolution
 
-- Picked at: 2026-07-13 22:51 Asia/Shanghai
-- Owner: Codex `/work.loop`
-- Execution: issue 0003 isolated worktree
-- Notes: Issues 0001 and 0002 are completed and pushed; this is the final dependency in sequence.
+- Closed at: 2026-07-13 22:58 Asia/Shanghai
+- Commit: `f94cfaf`
+- Verification:
+  - `git diff --cached --check` — passed
+  - repository Playwright game client — passed start, keyboard steering/jump, screenshot, text-state, and console checks
+  - page-level Playwright rider flow — passed sustained left/right, neutral recovery, jump lift, steered curve, neutral crest, course completion, restart, view toggle, fullscreen button/key entry and exit, telemetry alignment, and console checks
+  - `/work.review staged` — passed with no required findings
+- Notes: The Three.js camera now follows course-relative rider position, the cockpit leans from the existing normalized input, world-up keeps horizon roll at zero, and a completed run restarts from clean state.

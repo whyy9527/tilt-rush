@@ -171,6 +171,7 @@
     let testingMode = false;
     let viewMode = 'first-person';
     let lastFrame = performance.now();
+    let normalizedSteering = 0;
 
     const threeRenderer = new THREE.WebGLRenderer({ canvas: threeCanvas, antialias: true });
     threeRenderer.setPixelRatio(Math.min(devicePixelRatio, 2));
@@ -296,6 +297,29 @@
       }
     }
 
+    threeScene.add(threeCamera);
+    const cockpit = new THREE.Group();
+    threeCamera.add(cockpit);
+    const cockpitMaterial = new THREE.MeshStandardMaterial({ color: 0x252b35, roughness: 0.72, metalness: 0.28 });
+    const cockpitAccentMaterial = new THREE.MeshStandardMaterial({ color: 0xff5c35, emissive: 0x711a08, emissiveIntensity: 1.4 });
+    const fairing = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.38, 0.95), cockpitMaterial);
+    fairing.position.set(0, -1.05, -1.72);
+    fairing.rotation.x = -0.12;
+    cockpit.add(fairing);
+    const handlebar = new THREE.Mesh(new THREE.BoxGeometry(1.65, 0.08, 0.08), cockpitMaterial);
+    handlebar.position.set(0, -0.78, -1.48);
+    cockpit.add(handlebar);
+    const dash = new THREE.Mesh(new THREE.BoxGeometry(0.48, 0.2, 0.12), cockpitAccentMaterial);
+    dash.position.set(0, -0.79, -1.34);
+    cockpit.add(dash);
+    const windshield = new THREE.Mesh(
+      new THREE.PlaneGeometry(1.16, 0.46),
+      new THREE.MeshStandardMaterial({ color: 0x8fdcff, transparent: true, opacity: 0.2, side: THREE.DoubleSide })
+    );
+    windshield.position.set(0, -0.56, -1.63);
+    windshield.rotation.x = -0.2;
+    cockpit.add(windshield);
+
     const state = {
       mode: 'ready', score: 0, best: Number(localStorage.getItem('tilt-rush-best') || 0), lives: 3, clears: 0, jumps: 0,
       elapsed: 0, speed: 260, spawnTimer: 1.1, spawnIndex: 0, roadOffset: 0, level: 0, previousLevel: 0, levelBlend: 1, levelDistance: 0, totalDistance: 0, levelFlash: 0,
@@ -316,7 +340,8 @@
 
     function resetGame() {
       Object.assign(state, { mode: 'playing', score: 0, lives: 3, clears: 0, jumps: 0, elapsed: 0, speed: 260, spawnTimer: 1.1, spawnIndex: 0, roadOffset: 0, level: 0, previousLevel: 0, levelBlend: 1, levelDistance: 0, totalDistance: 0, levelFlash: 2.2, obstacles: [], particles: [], energyTrail: [], trailTimer: 0 });
-      Object.assign(state.player, { x: 500, y: 590, lean: 0, jumpRemaining: 0, jumpCooldown: 0, invulnerable: 0, jumpPulse: 0 });
+      Object.assign(state.player, { x: 500, y: 590, lean: 0, jumpRemaining: 0, jumpHeight: 0, jumpCooldown: 0, invulnerable: 0, jumpPulse: 0 });
+      normalizedSteering = 0;
       menu.hidden = true;
       render();
     }
@@ -326,6 +351,15 @@
       state.best = Math.max(state.best, Math.floor(state.score));
       localStorage.setItem('tilt-rush-best', state.best);
       message.innerHTML = `Run over — <strong>${Math.floor(state.score)}</strong> points.<br>Best score: ${state.best}`;
+      startButton.textContent = 'Race again';
+      menu.hidden = false;
+    }
+
+    function completeCourse() {
+      state.mode = 'complete';
+      state.best = Math.max(state.best, Math.floor(state.score));
+      localStorage.setItem('tilt-rush-best', state.best);
+      message.innerHTML = `Course complete — <strong>${Math.floor(state.score)}</strong> points.<br>Best score: ${state.best}`;
       startButton.textContent = 'Race again';
       menu.hidden = false;
     }
@@ -354,6 +388,10 @@
       const current = levelRoadCenter(state.level, y);
       const blend = state.levelBlend * state.levelBlend * (3 - 2 * state.levelBlend);
       return previous + (current - previous) * blend;
+    }
+
+    function playerCourseLateral() {
+      return Math.max(-1, Math.min(1, (state.player.x - roadCenter(state.player.y)) / 210));
     }
 
     function overlaps(a, b) {
@@ -388,6 +426,11 @@
       state.levelBlend = Math.min(1, state.levelBlend + dt / 2);
       const currentLevel = levels[state.level];
       if (state.levelDistance >= currentLevel.length) {
+        if (state.level === levels.length - 1) {
+          state.levelDistance = currentLevel.length;
+          completeCourse();
+          return;
+        }
         state.levelDistance -= currentLevel.length;
         state.previousLevel = state.level;
         state.level = Math.min(state.level + 1, levels.length - 1);
@@ -403,10 +446,10 @@
       }
 
       const keyboard = (keys.has('ArrowRight') ? 1 : 0) - (keys.has('ArrowLeft') ? 1 : 0);
-      const steering = keyboard || (cameraState === 'ready' ? cameraTilt : 0);
+      normalizedSteering = keyboard || (cameraState === 'ready' ? cameraTilt : 0);
       const playerRoadCenter = roadCenter(state.player.y);
-      state.player.x = Math.max(playerRoadCenter - 210, Math.min(playerRoadCenter + 210, state.player.x + steering * 330 * dt));
-      state.player.lean += (steering - state.player.lean) * Math.min(1, dt * 8);
+      state.player.x = Math.max(playerRoadCenter - 210, Math.min(playerRoadCenter + 210, state.player.x + normalizedSteering * 330 * dt));
+      state.player.lean += (normalizedSteering - state.player.lean) * Math.min(1, dt * 8);
       state.player.invulnerable = Math.max(0, state.player.invulnerable - dt);
       state.player.jumpRemaining = Math.max(0, state.player.jumpRemaining - dt);
       state.player.jumpCooldown = Math.max(0, state.player.jumpCooldown - dt);
@@ -550,10 +593,16 @@
       canvas.hidden = firstPerson;
       if (firstPerson) {
         const cameraFrame = courseFrameAt(currentCourseProgress());
-        const target = courseProfileAt(cameraFrame.progress + 18);
-        threeCamera.position.copy(cameraFrame.point);
-        threeCamera.position.y += 2.35;
-        threeCamera.lookAt(target.x, target.y + 0.45, target.z);
+        const targetFrame = courseFrameAt(cameraFrame.progress + 18);
+        const lateral = playerCourseLateral() * 3.5;
+        const jumpOffset = (state.player.jumpHeight || 0) / 90 * 0.62;
+        const target = targetFrame.point.clone().addScaledVector(targetFrame.right, lateral);
+        threeCamera.position.copy(cameraFrame.point).addScaledVector(cameraFrame.right, lateral);
+        threeCamera.position.y += 2.35 + jumpOffset;
+        target.y += 0.45 + jumpOffset * 0.15;
+        threeCamera.up.set(0, 1, 0);
+        threeCamera.lookAt(target);
+        cockpit.rotation.z = -state.player.lean * 0.16;
         threeRenderer.render(threeScene, threeCamera);
         updateHud();
         return;
@@ -737,11 +786,12 @@
 
     window.render_game_to_text = () => {
       const course = courseProfileAt(currentCourseProgress());
+      const courseLateral = playerCourseLateral();
       return JSON.stringify({
         coordinateSystem: 'logical 1000x700; origin top-left; x right; y down', mode: state.mode,
         rendering: { renderer: viewMode === 'first-person' ? 'three' : 'canvas-2d', camera: viewMode === 'first-person' ? threeCamera.type : 'top-down' },
         course: { segment: course.segment, progress: +course.progress.toFixed(1), length: COURSE_LENGTH, elevation: +course.y.toFixed(2) },
-        player: { type: 'light-cycle', x: +state.player.x.toFixed(1), y: state.player.y, lean: +state.player.lean.toFixed(2), jumpHeight: +(state.player.jumpHeight || 0).toFixed(1), jumpCooldown: +state.player.jumpCooldown.toFixed(2), invulnerable: +state.player.invulnerable.toFixed(2), trailPoints: state.energyTrail.length },
+        player: { type: 'light-cycle', x: +state.player.x.toFixed(1), y: state.player.y, courseLateral: +courseLateral.toFixed(2), steering: +normalizedSteering.toFixed(2), lean: +state.player.lean.toFixed(2), cockpitLean: +(-state.player.lean * 0.16).toFixed(3), horizonRoll: 0, jumpHeight: +(state.player.jumpHeight || 0).toFixed(1), jumpCooldown: +state.player.jumpCooldown.toFixed(2), invulnerable: +state.player.invulnerable.toFixed(2), trailPoints: state.energyTrail.length },
         level: { number: state.level + 1, name: levels[state.level].name, distance: Math.floor(state.levelDistance), target: levels[state.level].length, roadBlend: +state.levelBlend.toFixed(2) }, roadCenterAtPlayer: +roadCenter(state.player.y).toFixed(1), obstacles: state.obstacles.map(o => ({ type: trafficTypes[o.type].name, lane: o.laneIndex, x: +o.x.toFixed(1), y: +o.y.toFixed(1) })), score: Math.floor(state.score),
         best: state.best, lives: state.lives, clears: state.clears, jumps: state.jumps, speed: Math.round(state.speed),
         connected: cameraState === 'ready', input: cameraState === 'ready' ? 'camera' : 'keyboard', camera: { state: cameraState, roll: +cameraRoll.toFixed(2), pitch: +cameraPitch.toFixed(3), pitchDelta: +cameraPitchDelta.toFixed(3), tilt: +cameraTilt.toFixed(2), calibrationQuality: cameraPreview.dataset.quality, calibrationProgress: Math.min(100, Math.round(calibrationStableMs / 1200 * 100)) }, view: viewMode, fullscreen: Boolean(document.fullscreenElement)

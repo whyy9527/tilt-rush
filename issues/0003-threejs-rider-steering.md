@@ -1,4 +1,4 @@
-🟡 # Bind normalized steering to the Three.js rider view
+📌 # Bind normalized steering to the Three.js rider view
 
 Created: 2026-07-13
 Source: Split from [issue 0001](0001-threejs-first-person-renderer.md)
@@ -54,3 +54,10 @@ Feed the existing normalized steering value into a course-relative lateral rider
 ## Why This Is Separate
 
 Rider input and camera comfort can be verified only after the renderer and course geometry have stable world-space boundaries.
+
+## Picked
+
+- Picked at: 2026-07-13 22:51 Asia/Shanghai
+- Owner: Codex `/work.loop`
+- Execution: issue 0003 isolated worktree
+- Notes: Issues 0001 and 0002 are completed and pushed; this is the final dependency in sequence.

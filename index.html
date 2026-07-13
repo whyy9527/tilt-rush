@@ -185,29 +185,114 @@
     const hemisphereLight = new THREE.HemisphereLight(0x8fc8ff, 0x24120c, 2.2);
     threeScene.add(hemisphereLight);
 
+    const COURSE_LENGTH = 370;
+    const COURSE_GEOMETRY_LENGTH = 430;
+    const COURSE_DISTANCE_SCALE = levels.reduce((total, level) => total + level.length, 0) / COURSE_LENGTH;
+
+    function smoothstep01(value) {
+      const t = Math.max(0, Math.min(1, value));
+      return t * t * (3 - 2 * t);
+    }
+
+    function courseProfileAt(distance) {
+      const progress = Math.max(0, Math.min(COURSE_GEOMETRY_LENGTH, distance));
+      const curve = smoothstep01((progress - 55) / 130);
+      let elevation = 0;
+      if (progress >= 140 && progress < 250) elevation = 12 * smoothstep01((progress - 140) / 110);
+      else if (progress < 285 && progress >= 250) elevation = 12;
+      else if (progress >= 285) elevation = 12 - 11 * smoothstep01((progress - 285) / 85);
+
+      let segment = 'straight';
+      if (progress >= 55 && progress < 170) segment = 'curve';
+      else if (progress >= 170 && progress < 250) segment = 'climb';
+      else if (progress >= 250 && progress < 285) segment = 'crest';
+      else if (progress >= 285) segment = 'descent';
+
+      return { progress, x: curve * 15, y: elevation, z: -progress, segment };
+    }
+
+    function courseFrameAt(distance) {
+      const profile = courseProfileAt(distance);
+      const behind = courseProfileAt(Math.max(0, profile.progress - 0.5));
+      const ahead = courseProfileAt(Math.min(COURSE_GEOMETRY_LENGTH, profile.progress + 0.5));
+      const point = new THREE.Vector3(profile.x, profile.y, profile.z);
+      const tangent = new THREE.Vector3(ahead.x - behind.x, ahead.y - behind.y, ahead.z - behind.z).normalize();
+      const right = new THREE.Vector3(-tangent.z, 0, tangent.x).normalize();
+      return { ...profile, point, tangent, right };
+    }
+
+    function currentCourseProgress() {
+      return Math.min(COURSE_LENGTH, state.totalDistance / COURSE_DISTANCE_SCALE);
+    }
+
+    function createRoadGeometry() {
+      const positions = [];
+      const indices = [];
+      const step = 2;
+      for (let distance = 0; distance <= COURSE_GEOMETRY_LENGTH; distance += step) {
+        const frame = courseFrameAt(distance);
+        const left = frame.point.clone().addScaledVector(frame.right, -5);
+        const right = frame.point.clone().addScaledVector(frame.right, 5);
+        positions.push(left.x, left.y, left.z, right.x, right.y, right.z);
+      }
+      const rowCount = COURSE_GEOMETRY_LENGTH / step + 1;
+      for (let row = 0; row < rowCount - 1; row++) {
+        const left = row * 2;
+        const right = left + 1;
+        const nextLeft = left + 2;
+        const nextRight = left + 3;
+        indices.push(left, right, nextLeft, right, nextRight, nextLeft);
+      }
+      const geometry = new THREE.BufferGeometry();
+      geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+      geometry.setIndex(indices);
+      geometry.computeVertexNormals();
+      return geometry;
+    }
+
     const road = new THREE.Mesh(
-      new THREE.PlaneGeometry(10, 120),
+      createRoadGeometry(),
       new THREE.MeshStandardMaterial({ color: 0x292d36, roughness: 0.92 })
     );
-    road.rotation.x = -Math.PI / 2;
-    road.position.z = -52;
     threeScene.add(road);
 
-    const boundaryGeometry = new THREE.BoxGeometry(0.16, 0.12, 120);
     const boundaryMaterial = new THREE.MeshStandardMaterial({ color: 0xff7048, emissive: 0x5c1608, emissiveIntensity: 1.1 });
     for (const side of [-1, 1]) {
-      const boundary = new THREE.Mesh(boundaryGeometry, boundaryMaterial);
-      boundary.position.set(side * 5, 0.07, -52);
+      const points = [];
+      for (let distance = 0; distance <= COURSE_GEOMETRY_LENGTH; distance += 2) {
+        const frame = courseFrameAt(distance);
+        const point = frame.point.clone().addScaledVector(frame.right, side * 5.05);
+        point.y += 0.1;
+        points.push(point);
+      }
+      const boundaryCurve = new THREE.CatmullRomCurve3(points, false, 'centripetal');
+      const boundary = new THREE.Mesh(new THREE.TubeGeometry(boundaryCurve, 240, 0.09, 6, false), boundaryMaterial);
       threeScene.add(boundary);
     }
 
     const markerGeometry = new THREE.BoxGeometry(0.09, 0.035, 2.7);
     const markerMaterial = new THREE.MeshStandardMaterial({ color: 0xe9edf4, emissive: 0x35383d, emissiveIntensity: 0.5 });
-    for (let z = 4; z > -108; z -= 7) {
+    const markerForward = new THREE.Vector3(0, 0, 1);
+    for (let distance = 5; distance < COURSE_GEOMETRY_LENGTH; distance += 7) {
+      const frame = courseFrameAt(distance);
       for (const lane of [-1.65, 1.65]) {
         const marker = new THREE.Mesh(markerGeometry, markerMaterial);
-        marker.position.set(lane, 0.035, z);
+        marker.position.copy(frame.point).addScaledVector(frame.right, lane);
+        marker.position.y += 0.035;
+        marker.quaternion.setFromUnitVectors(markerForward, frame.tangent);
         threeScene.add(marker);
+      }
+    }
+
+    const roadsideGeometry = new THREE.BoxGeometry(0.14, 1.25, 0.14);
+    const roadsideMaterial = new THREE.MeshStandardMaterial({ color: 0xffb35a, emissive: 0x6b2b08, emissiveIntensity: 1.2 });
+    for (let distance = 10; distance < COURSE_GEOMETRY_LENGTH; distance += 14) {
+      const frame = courseFrameAt(distance);
+      for (const side of [-1, 1]) {
+        const roadsideMarker = new THREE.Mesh(roadsideGeometry, roadsideMaterial);
+        roadsideMarker.position.copy(frame.point).addScaledVector(frame.right, side * 5.55);
+        roadsideMarker.position.y += 0.62;
+        threeScene.add(roadsideMarker);
       }
     }
 
@@ -463,7 +548,16 @@
       const firstPerson = viewMode === 'first-person';
       threeCanvas.hidden = !firstPerson;
       canvas.hidden = firstPerson;
-      if (firstPerson) { threeRenderer.render(threeScene, threeCamera); updateHud(); return; }
+      if (firstPerson) {
+        const cameraFrame = courseFrameAt(currentCourseProgress());
+        const target = courseProfileAt(cameraFrame.progress + 18);
+        threeCamera.position.copy(cameraFrame.point);
+        threeCamera.position.y += 2.35;
+        threeCamera.lookAt(target.x, target.y + 0.45, target.z);
+        threeRenderer.render(threeScene, threeCamera);
+        updateHud();
+        return;
+      }
       context.setTransform(scale, 0, 0, scale, (width - 1000 * scale) / 2, (height - 700 * scale) / 2);
       drawCyberCity();
       context.save(); traceRoadSurface(); context.clip();
@@ -641,14 +735,18 @@
     });
     addEventListener('keyup', event => keys.delete(event.key));
 
-    window.render_game_to_text = () => JSON.stringify({
-      coordinateSystem: 'logical 1000x700; origin top-left; x right; y down', mode: state.mode,
-      rendering: { renderer: viewMode === 'first-person' ? 'three' : 'canvas-2d', camera: viewMode === 'first-person' ? threeCamera.type : 'top-down' },
-      player: { type: 'light-cycle', x: +state.player.x.toFixed(1), y: state.player.y, lean: +state.player.lean.toFixed(2), jumpHeight: +(state.player.jumpHeight || 0).toFixed(1), jumpCooldown: +state.player.jumpCooldown.toFixed(2), invulnerable: +state.player.invulnerable.toFixed(2), trailPoints: state.energyTrail.length },
-      level: { number: state.level + 1, name: levels[state.level].name, distance: Math.floor(state.levelDistance), target: levels[state.level].length, roadBlend: +state.levelBlend.toFixed(2) }, roadCenterAtPlayer: +roadCenter(state.player.y).toFixed(1), obstacles: state.obstacles.map(o => ({ type: trafficTypes[o.type].name, lane: o.laneIndex, x: +o.x.toFixed(1), y: +o.y.toFixed(1) })), score: Math.floor(state.score),
-      best: state.best, lives: state.lives, clears: state.clears, jumps: state.jumps, speed: Math.round(state.speed),
-      connected: cameraState === 'ready', input: cameraState === 'ready' ? 'camera' : 'keyboard', camera: { state: cameraState, roll: +cameraRoll.toFixed(2), pitch: +cameraPitch.toFixed(3), pitchDelta: +cameraPitchDelta.toFixed(3), tilt: +cameraTilt.toFixed(2), calibrationQuality: cameraPreview.dataset.quality, calibrationProgress: Math.min(100, Math.round(calibrationStableMs / 1200 * 100)) }, view: viewMode, fullscreen: Boolean(document.fullscreenElement)
-    });
+    window.render_game_to_text = () => {
+      const course = courseProfileAt(currentCourseProgress());
+      return JSON.stringify({
+        coordinateSystem: 'logical 1000x700; origin top-left; x right; y down', mode: state.mode,
+        rendering: { renderer: viewMode === 'first-person' ? 'three' : 'canvas-2d', camera: viewMode === 'first-person' ? threeCamera.type : 'top-down' },
+        course: { segment: course.segment, progress: +course.progress.toFixed(1), length: COURSE_LENGTH, elevation: +course.y.toFixed(2) },
+        player: { type: 'light-cycle', x: +state.player.x.toFixed(1), y: state.player.y, lean: +state.player.lean.toFixed(2), jumpHeight: +(state.player.jumpHeight || 0).toFixed(1), jumpCooldown: +state.player.jumpCooldown.toFixed(2), invulnerable: +state.player.invulnerable.toFixed(2), trailPoints: state.energyTrail.length },
+        level: { number: state.level + 1, name: levels[state.level].name, distance: Math.floor(state.levelDistance), target: levels[state.level].length, roadBlend: +state.levelBlend.toFixed(2) }, roadCenterAtPlayer: +roadCenter(state.player.y).toFixed(1), obstacles: state.obstacles.map(o => ({ type: trafficTypes[o.type].name, lane: o.laneIndex, x: +o.x.toFixed(1), y: +o.y.toFixed(1) })), score: Math.floor(state.score),
+        best: state.best, lives: state.lives, clears: state.clears, jumps: state.jumps, speed: Math.round(state.speed),
+        connected: cameraState === 'ready', input: cameraState === 'ready' ? 'camera' : 'keyboard', camera: { state: cameraState, roll: +cameraRoll.toFixed(2), pitch: +cameraPitch.toFixed(3), pitchDelta: +cameraPitchDelta.toFixed(3), tilt: +cameraTilt.toFixed(2), calibrationQuality: cameraPreview.dataset.quality, calibrationProgress: Math.min(100, Math.round(calibrationStableMs / 1200 * 100)) }, view: viewMode, fullscreen: Boolean(document.fullscreenElement)
+      });
+    };
     window.advanceTime = ms => {
       testingMode = true;
       const steps = Math.max(1, Math.round(ms / (1000 / 60)));

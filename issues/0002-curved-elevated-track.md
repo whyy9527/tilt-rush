@@ -1,4 +1,4 @@
-🟡 # Build one curved, elevated Three.js course
+📌 # Build one curved, elevated Three.js course
 
 Created: 2026-07-13
 Source: Split from [issue 0001](0001-threejs-first-person-renderer.md)
@@ -51,3 +51,10 @@ Use one deterministic centerline to generate the road surface, boundaries, and r
 ## Why This Is Separate
 
 Course generation has a geometry-and-progress verification path independent from renderer initialization and rider steering.
+
+## Picked
+
+- Picked at: 2026-07-13 22:42 Asia/Shanghai
+- Owner: Codex `/work.loop`
+- Execution: issue 0002 isolated worktree
+- Notes: Issue 0001 is completed and pushed; this is the next dependency in sequence.

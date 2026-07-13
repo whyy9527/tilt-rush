@@ -1,48 +1,57 @@
-🟡 # Replace the Canvas perspective renderer with Three.js
+🟡 # Establish the Three.js first-person renderer
 
 Created: 2026-07-13
 Source: Engine decision following the first-person V1 evaluation
+Owner repo: `tilt-rush`
+Related issues: [0002](0002-curved-elevated-track.md), [0003](0003-threejs-rider-steering.md)
 
 ## Goal
 
-Deliver a keyboard-playable Three.js first-person gray-box slice with one curved, elevated track while preserving the existing normalized steering contract.
+Replace the default Canvas pseudo-perspective view with a Three.js `PerspectiveCamera` rendering a static gray-box straight, while leaving the existing game state and normalized input contract unchanged.
 
 ## Context
 
-The current first-person view projects top-down coordinates into a road-shaped polygon and draws a fixed cockpit overlay. This is sufficient to test controls, but it cannot produce convincing sight lines, elevation, corner entry, landing motion, or spatial traffic placement without growing a bespoke 3D renderer.
+The current first-person view projects top-down coordinates into a road-shaped Canvas polygon. Three.js is the chosen rendering layer, but renderer setup must land before track geometry and rider motion are added.
 
-Three.js is the chosen rendering layer. The game remains a browser-native static deployment; this is not a separate V2 or a second game.
+## Chosen Slice
+
+When the first-person view renders, use one Three.js scene, perspective camera, and WebGL renderer to draw a static straight road inside the existing game shell.
 
 ## Scope
 
-- Introduce a Three.js scene and perspective camera in the existing game.
-- Build one gray-box track containing a straight, a readable curve, and an elevation change.
-- Render a first-person motorcycle cockpit, road boundaries, and enough roadside markers to communicate speed.
-- Drive the new renderer from the existing normalized steering value and verify the slice with keyboard input.
-- Preserve the current game shell, input boundary, and static GitHub Pages deployment.
+- Load Three.js from a browser-compatible ESM CDN without adding a build step.
+- Add a dedicated WebGL canvas for one scene, `PerspectiveCamera`, and `WebGLRenderer` while retaining the existing Canvas element for top-down debug rendering.
+- Render a visible gray-box straight, road boundaries, and depth markers.
+- Make Three.js the default first-person render path.
+- Preserve the Canvas top-down debug view, HUD, menu, resize, input, and game-state update paths.
+- Expose the active renderer and camera type through `window.render_game_to_text()`.
 
 ## Non-goals
 
-- Godot or Phaser migration.
-- A second V2 entry point or repository.
-- Final vehicle models, city art, lighting polish, or a complete campaign.
-- Webcam end-to-end validation, traffic, collisions, jump feedback, scoring migration, or top-down camera migration.
-- Multiplayer, accounts, backend services, or AirPods integration.
-- Realistic motorcycle simulation physics.
+- Curves, elevation, course-relative motion, or course completion changes.
+- Rider cockpit, steering visualization, camera lean, traffic, collision, or jump rendering in Three.js.
+- Final models, textures, lighting polish, or a new build tool.
+- Webcam contract changes.
 
 ## Acceptance Criteria
 
-- [ ] The default view uses a Three.js `PerspectiveCamera` and no longer calls the Canvas pseudo-perspective renderer.
-- [ ] One continuous course visibly curves and changes elevation in world space.
-- [ ] Steering changes the motorcycle line and lean without rotating the horizon enough to make head control uncomfortable.
-- [ ] The renderer consumes the existing normalized steering value without changing the webcam calibration contract.
-- [ ] Keyboard control completes the gray-box course from start to finish.
-- [ ] The game remains deployable as a static GitHub Pages site.
+- [ ] The default first-person view renders through Three.js with a `PerspectiveCamera` and does not call `renderFirstPerson()`.
+- [ ] A straight gray road, both road boundaries, and repeated depth markers are visible.
+- [ ] Switching views shows only the active renderer canvas, and both views remain usable.
+- [ ] Resize and fullscreen continue to fill the viewport without stretching the Three.js camera.
+- [ ] `window.render_game_to_text()` reports `renderer: "three"` and `camera: "PerspectiveCamera"` in first-person mode.
+- [ ] The static site runs without a bundler and introduces no browser console errors.
 
-## Verification
+## Verification Plan
 
-- Run the local static server and the repository's Playwright game client.
-- Verify start, keyboard steering, course completion, restart, and fullscreen flows.
-- Capture and inspect gameplay screenshots for the straight, curve, and elevation change.
-- Confirm `window.render_game_to_text()` reports the same view, player, track segment, and mode state visible on screen.
-- Confirm the browser console contains no new errors and the GitHub Pages deployment succeeds.
+- `git diff --check` — no whitespace errors.
+- Run the local static server and the repository Playwright game client.
+- Verify start, first-person render, top-down toggle, return to first-person, resize, and fullscreen.
+- Capture and inspect a gameplay screenshot showing the straight, boundaries, and depth markers.
+- Compare the screenshot with `window.render_game_to_text()` renderer and camera fields.
+- Run `/work.review staged` before commit and push.
+
+## Follow-ups
+
+- [0002](0002-curved-elevated-track.md) adds the continuous curved, elevated course after this renderer foundation is pushed.
+- [0003](0003-threejs-rider-steering.md) binds normalized steering and the rider cockpit after the course exists.

@@ -1,0 +1,642 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Tilt Rush</title>
+  <style>
+    :root { color-scheme: dark; font-family: ui-rounded, system-ui, sans-serif; }
+    * { box-sizing: border-box; }
+    body { margin: 0; overflow: hidden; background: #09051a; color: #fff; }
+    canvas { display: block; width: 100vw; height: 100vh; }
+    .camera-calibration { position: fixed; z-index: 5; inset: 0; display: grid; place-items: center; padding: 20px; background: #02050dcc; backdrop-filter: blur(10px); }
+    .camera-calibration[hidden] { display: none; }
+    .calibration-card { width: min(380px, calc(100vw - 40px)); padding: 20px; border: 1px solid #66ffb680; border-radius: 22px; background: #07130fee; box-shadow: 0 24px 80px #000b; text-align: center; }
+    .calibration-card h2 { margin: 0 0 5px; font-size: 22px; }
+    .calibration-card p { margin: 0 0 14px; color: #b9d7c9; font-size: 14px; }
+    .camera-preview { position: relative; aspect-ratio: 4 / 3; overflow: hidden; border-radius: 15px; background: #020805; }
+    #camera-feed { display: block; width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); opacity: .72; }
+    .face-guide { position: absolute; inset: 11% 25%; border: 3px solid #ffc85a; border-radius: 48% 48% 44% 44%; box-shadow: 0 0 22px #ffc85a99, inset 0 0 22px #ffc85a44; transition: border-color 160ms, box-shadow 160ms; }
+    .camera-preview[data-quality="good"] .face-guide { border-color: #55f59c; box-shadow: 0 0 22px #55f59c99, inset 0 0 22px #55f59c44; }
+    .face-guide::before, .face-guide::after { content: ''; position: absolute; top: 43%; width: 10px; height: 10px; border-radius: 50%; background: #9effc7; box-shadow: 0 0 12px #55f59c; }
+    .face-guide::before { left: 24%; } .face-guide::after { right: 24%; }
+    .calibration-progress { height: 6px; margin-top: 14px; overflow: hidden; border-radius: 999px; background: #ffffff1b; }
+    #calibration-fill { width: 0; height: 100%; border-radius: inherit; background: #55f59c; box-shadow: 0 0 12px #55f59c; transition: width 80ms linear; }
+    .topbar { position: fixed; z-index: 2; inset: 20px 20px auto; display: flex; justify-content: space-between; align-items: flex-start; gap: 24px; pointer-events: none; }
+    .panel { border: 1px solid #ff7a3a55; border-radius: 7px 20px 7px 20px; background: linear-gradient(135deg, #07111ef2, #131019e8); box-shadow: 0 8px 30px #0008, inset 3px 0 #ff542e; backdrop-filter: blur(12px); }
+    .race-hud { width: min(430px, 45vw); overflow: hidden; }
+    .race-heading { display: flex; justify-content: space-between; gap: 12px; padding: 13px 16px 8px; }
+    .eyebrow { color: #ff815b; font-size: 10px; font-weight: 900; letter-spacing: .16em; text-transform: uppercase; }
+    #hud-stage-name { display: block; margin-top: 2px; font-size: 21px; font-weight: 900; letter-spacing: -.035em; }
+    #hud-stage-percent { align-self: end; font-size: 22px; font-weight: 300; font-variant-numeric: tabular-nums; }
+    .stage-track { height: 4px; margin: 0 16px 10px; overflow: hidden; background: #ffffff19; transform: skewX(-18deg); }
+    #stage-fill { width: 0; height: 100%; background: linear-gradient(90deg, #ff3d28, #ffb04f); box-shadow: 0 0 12px #ff5b36; }
+    .control-deck { padding: 9px 13px 11px 16px; border-top: 1px solid #ffffff13; background: #02071052; }
+    #status { display: inline-block; margin-bottom: 7px; color: #b8c1ce; font-size: 12px; }
+    #status[data-connected="true"] { color: #72f1b8; }
+    button { min-height: 40px; padding: 8px 12px; border: 1px solid #ffffff55; border-radius: 9px; background: #ffffff18; color: inherit; font: inherit; font-size: 14px; font-weight: 700; white-space: nowrap; cursor: pointer; pointer-events: auto; }
+    button:hover { background: #ffffff2b; transform: translateY(-1px); }
+    button:disabled { cursor: default; opacity: .42; transform: none; }
+    .actions { display: flex; gap: 7px; }
+    .input-switch { display: flex; gap: 3px; padding: 3px; border: 1px solid #ffffff2b; border-radius: 12px; background: #020b16a8; }
+    .input-switch button { min-height: 34px; border-color: transparent; background: transparent; }
+    .input-switch button[aria-pressed="true"] { border-color: #ff764d80; background: #ff542e2b; color: #ffb197; box-shadow: inset 0 0 0 1px #ff764d30; }
+    .input-switch button[aria-pressed="true"]::before { content: ''; display: inline-block; width: 7px; height: 7px; margin-right: 7px; border-radius: 50%; background: #ff6842; box-shadow: 0 0 9px #ff6842; vertical-align: 1px; }
+    .menu { position: fixed; z-index: 1; inset: 0; display: grid; place-items: center; background: linear-gradient(#02071144, #020711aa), url('assets/tilt-rush-menu-v1.webp') center / cover no-repeat; }
+    .menu[hidden] { display: none; }
+    .card { width: min(500px, calc(100vw - 40px)); padding: 34px; border: 1px solid #ff774d80; border-radius: 8px 28px 8px 28px; background: linear-gradient(145deg, #07111eef, #160c12e8); box-shadow: 0 24px 80px #000b, inset 4px 0 #ff4f2d; text-align: center; }
+    .card h1 { margin: 0 0 8px; font-size: clamp(38px, 7vw, 64px); letter-spacing: -0.05em; }
+    .card p { color: #d9eaff; line-height: 1.55; }
+    #start { min-width: 180px; padding: 12px 20px; background: linear-gradient(90deg, #ff3f2c, #ff7a32); border-color: #ffc09e; font-size: 17px; box-shadow: 0 0 24px #ff4d2d55; }
+    kbd { padding: 2px 7px; border: 1px solid #ffffff42; border-radius: 6px; background: #ffffff12; }
+    .speed-hud { width: 235px; padding: 13px 16px 12px 18px; font-variant-numeric: tabular-nums; }
+    .speed-top { display: flex; justify-content: flex-end; align-items: flex-end; gap: 9px; }
+    #hud-speed { font-size: 54px; font-weight: 250; line-height: .82; letter-spacing: -.07em; text-shadow: 0 0 24px #ff593c44; }
+    .speed-meta { padding-bottom: 1px; color: #aeb7c5; font-size: 9px; font-weight: 800; letter-spacing: .12em; line-height: 1.5; }
+    #hud-gear { color: #ff744d; font-size: 17px; }
+    .rev-track { height: 5px; margin-top: 10px; overflow: hidden; background: repeating-linear-gradient(90deg, #ffffff18 0 12px, transparent 12px 15px); transform: skewX(-20deg); }
+    #rev-fill { width: 0; height: 100%; background: linear-gradient(90deg, #f7f7f7, #ff9e43 72%, #ff3026); }
+    .race-stats { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-top: 10px; padding-top: 8px; border-top: 1px solid #ffffff17; }
+    .race-stat { color: #8f99a7; font-size: 9px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; }
+    .race-stat strong { display: block; margin-top: 2px; color: #fff; font-size: 15px; letter-spacing: 0; }
+    #hud-lives { color: #ff765c; letter-spacing: .08em; }
+    @media (max-width: 760px) { .topbar { inset: 10px 10px auto; gap: 8px; } .race-hud { width: 58vw; } .speed-hud { width: 37vw; } #hud-speed { font-size: 38px; } .actions > button { display: none; } .input-switch button { padding-inline: 8px; } .race-heading { padding: 10px 12px 7px; } #hud-stage-name { font-size: 16px; } }
+  </style>
+</head>
+<body>
+  <canvas id="game" aria-label="Tilt Rush racing game"></canvas>
+  <div class="camera-calibration" id="camera-calibration" hidden>
+    <section class="calibration-card" role="dialog" aria-modal="true" aria-labelledby="calibration-title">
+      <h2 id="calibration-title">Starting camera…</h2>
+      <p id="calibration-copy">Keep your face inside the green guide.</p>
+      <div class="camera-preview" id="camera-preview" data-quality="align"><video id="camera-feed" playsinline muted></video><div class="face-guide" aria-hidden="true"></div></div>
+      <div class="calibration-progress" id="calibration-progress" role="progressbar" aria-label="Stable calibration samples" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><div id="calibration-fill"></div></div>
+    </section>
+  </div>
+  <div class="topbar">
+    <section class="panel race-hud" aria-label="Race objective and controls">
+      <div class="race-heading"><div><span class="eyebrow" id="hud-stage-index">Night run · Stage 1/4</span><strong id="hud-stage-name">Ignition Mile</strong></div><span id="hud-stage-percent">0%</span></div>
+      <div class="stage-track"><div id="stage-fill"></div></div>
+      <div class="control-deck"><span id="status">Camera off · keyboard ready</span><div class="actions"><button id="camera" type="button" aria-pressed="false">Enable camera</button><button id="view" type="button">Top down</button><button id="center" type="button" disabled>Recenter</button><button id="fullscreen" type="button">Full screen</button></div></div>
+    </section>
+    <section class="panel speed-hud" id="telemetry" aria-label="Speed and race stats">
+      <div class="speed-top"><span id="hud-speed">260</span><span class="speed-meta">KM/H<br><b id="hud-gear">3</b> GEAR</span></div>
+      <div class="rev-track"><div id="rev-fill"></div></div>
+      <div class="race-stats"><span class="race-stat">Score<strong id="hud-score">0</strong></span><span class="race-stat">Best<strong id="hud-best">0</strong></span><span class="race-stat">Integrity<strong id="hud-lives">●●●</strong></span></div>
+    </section>
+  </div>
+  <div class="menu" id="menu">
+    <div class="card">
+      <h1>Tilt Rush</h1>
+      <p id="message">Tilt your head to carve. Flick up to jump traffic.<br>Camera video stays on this device and is never uploaded.</p>
+      <p><kbd>←</kbd> <kbd>→</kbd> steer · <kbd>Space</kbd> jump · <kbd>V</kbd> camera · <kbd>F</kbd> fullscreen</p>
+      <button id="start" type="button">Start run</button>
+    </div>
+  </div>
+  <script>
+    const canvas = document.querySelector('#game');
+    const context = canvas.getContext('2d');
+    const status = document.querySelector('#status');
+    const cameraButton = document.querySelector('#camera');
+    const cameraVideo = document.querySelector('#camera-feed');
+    const cameraOverlay = document.querySelector('#camera-calibration');
+    const calibrationTitle = document.querySelector('#calibration-title');
+    const calibrationCopy = document.querySelector('#calibration-copy');
+    const calibrationFill = document.querySelector('#calibration-fill');
+    const calibrationProgress = document.querySelector('#calibration-progress');
+    const cameraPreview = document.querySelector('#camera-preview');
+    const telemetry = document.querySelector('#telemetry');
+    const hudStageIndex = document.querySelector('#hud-stage-index');
+    const hudStageName = document.querySelector('#hud-stage-name');
+    const hudStagePercent = document.querySelector('#hud-stage-percent');
+    const stageFill = document.querySelector('#stage-fill');
+    const hudSpeed = document.querySelector('#hud-speed');
+    const hudGear = document.querySelector('#hud-gear');
+    const revFill = document.querySelector('#rev-fill');
+    const hudScore = document.querySelector('#hud-score');
+    const hudBest = document.querySelector('#hud-best');
+    const hudLives = document.querySelector('#hud-lives');
+    const centerButton = document.querySelector('#center');
+    const viewButton = document.querySelector('#view');
+    const fullscreenButton = document.querySelector('#fullscreen');
+    const menu = document.querySelector('#menu');
+    const message = document.querySelector('#message');
+    const startButton = document.querySelector('#start');
+    const bikeImage = new Image();
+    bikeImage.src = 'assets/light-cycle-v1.png';
+    const cityImage = new Image();
+    cityImage.src = 'assets/cyber-city-v2.webp';
+    const roadImage = new Image();
+    roadImage.src = 'assets/wet-asphalt-v1.webp';
+    const levels = [
+      { name: 'Ignition Mile', subtitle: 'Learn the lanes', length: 2600, curve: 'straight', interval: 1.3, pattern: [[1], [0], [2], [1], [0], [2]] },
+      { name: 'Dockside Sweep', subtitle: 'Read the long bend', length: 3600, curve: 'sweep', interval: 1.12, pattern: [[0], [2], [1], [0, 1], [2], [1]] },
+      { name: 'Neon Chicane', subtitle: 'Link the openings', length: 4400, curve: 'chicane', interval: .96, pattern: [[0, 1], [2], [1, 2], [0], [0, 2], [1]] },
+      { name: 'Skyway Hooks', subtitle: 'Commit, jump, recover', length: 5400, curve: 'hooks', interval: .84, pattern: [[0, 2], [1], [0, 1], [2], [1, 2], [0], [0, 2], [1]] }
+    ];
+    const trafficTypes = [
+      { name: 'Model 3', src: 'assets/traffic/model-3.png', width: 54, height: 112 },
+      { name: 'Model Y', src: 'assets/traffic/model-y.png', width: 58, height: 112 },
+      { name: 'Cybercab', src: 'assets/traffic/cybercab.png', width: 54, height: 116 },
+      { name: 'Cybertruck', src: 'assets/traffic/cybertruck.png', width: 58, height: 126 }
+    ];
+    for (const traffic of trafficTypes) { traffic.image = new Image(); traffic.image.src = traffic.src; }
+    const keys = new Set();
+    let width = 0;
+    let height = 0;
+    let scale = 1;
+    let cameraRequestId = 0;
+    let cameraTilt = 0;
+    let cameraState = 'off';
+    let cameraStream;
+    let faceLandmarker;
+    let lastCameraFrame = 0;
+    let cameraSamples = [];
+    let calibrationStableMs = 0;
+    let calibrationLastFrame = 0;
+    let neutralRoll = 0;
+    let neutralPitch = 0;
+    let cameraRoll = 0;
+    let cameraPitch = 0;
+    let cameraPitchDelta = 0;
+    let previousCameraPitch = 0;
+    let testingMode = false;
+    let viewMode = 'first-person';
+    let lastFrame = performance.now();
+
+    const state = {
+      mode: 'ready', score: 0, best: Number(localStorage.getItem('tilt-rush-best') || 0), lives: 3, clears: 0, jumps: 0,
+      elapsed: 0, speed: 260, spawnTimer: 1.1, spawnIndex: 0, roadOffset: 0, level: 0, previousLevel: 0, levelBlend: 1, levelDistance: 0, totalDistance: 0, levelFlash: 0,
+      player: { x: 500, y: 590, width: 30, height: 104, lean: 0, jumpRemaining: 0, jumpCooldown: 0, invulnerable: 0, jumpPulse: 0 }, obstacles: [], particles: [], energyTrail: [], trailTimer: 0
+    };
+
+    function resize() {
+      width = canvas.width = innerWidth * devicePixelRatio;
+      height = canvas.height = innerHeight * devicePixelRatio;
+      scale = Math.min(width / 1000, height / 700);
+    }
+    addEventListener('resize', resize);
+    resize();
+
+    function resetGame() {
+      Object.assign(state, { mode: 'playing', score: 0, lives: 3, clears: 0, jumps: 0, elapsed: 0, speed: 260, spawnTimer: 1.1, spawnIndex: 0, roadOffset: 0, level: 0, previousLevel: 0, levelBlend: 1, levelDistance: 0, totalDistance: 0, levelFlash: 2.2, obstacles: [], particles: [], energyTrail: [], trailTimer: 0 });
+      Object.assign(state.player, { x: 500, y: 590, lean: 0, jumpRemaining: 0, jumpCooldown: 0, invulnerable: 0, jumpPulse: 0 });
+      menu.hidden = true;
+      render();
+    }
+
+    function finishGame() {
+      state.mode = 'gameover';
+      state.best = Math.max(state.best, Math.floor(state.score));
+      localStorage.setItem('tilt-rush-best', state.best);
+      message.innerHTML = `Run over — <strong>${Math.floor(state.score)}</strong> points.<br>Best score: ${state.best}`;
+      startButton.textContent = 'Race again';
+      menu.hidden = false;
+    }
+
+    function spawnObstacle() {
+      const level = levels[state.level];
+      const lanes = level.pattern[state.spawnIndex++ % level.pattern.length];
+      const y = -110;
+      for (const laneIndex of lanes) {
+        const type = (state.spawnIndex + laneIndex - 1) % trafficTypes.length; const traffic = trafficTypes[type];
+        state.obstacles.push({ x: roadCenter(y) + (laneIndex - 1) * 150, y, width: traffic.width, height: traffic.height, type, laneIndex });
+      }
+    }
+
+    function levelRoadCenter(levelIndex, y) {
+      const travel = state.totalDistance;
+      const curve = levels[levelIndex].curve;
+      if (curve === 'straight') return 500;
+      if (curve === 'sweep') return 500 + Math.sin((y + travel) / 430) * 64;
+      if (curve === 'chicane') return 500 + Math.sin((y + travel) / 210) * 78 + Math.sin((y + travel) / 520 + .7) * 20;
+      return 500 + Math.sin((y + travel) / 300) * 118 + Math.sin((y + travel) / 135) * 28;
+    }
+
+    function roadCenter(y) {
+      const previous = levelRoadCenter(state.previousLevel, y);
+      const current = levelRoadCenter(state.level, y);
+      const blend = state.levelBlend * state.levelBlend * (3 - 2 * state.levelBlend);
+      return previous + (current - previous) * blend;
+    }
+
+    function overlaps(a, b) {
+      return Math.abs(a.x - b.x) < (a.width + b.width) * 0.43 && Math.abs(a.y - b.y) < (a.height + b.height) * 0.43;
+    }
+
+    function crash(obstacle) {
+      state.lives -= 1;
+      state.player.invulnerable = 1.2;
+      for (let i = 0; i < 18; i++) state.particles.push({ x: state.player.x, y: state.player.y, vx: (i % 6 - 2.5) * 55, vy: -40 - (i % 4) * 25, life: 0.55 });
+      obstacle.hit = true;
+      if (state.lives <= 0) finishGame();
+    }
+
+    function jump() {
+      if (state.mode !== 'playing' || state.player.jumpRemaining > 0 || state.player.jumpCooldown > 0) return;
+      state.player.jumpRemaining = 0.85;
+      state.player.jumpCooldown = 1.1;
+      state.player.jumpPulse = 1;
+      state.jumps += 1;
+      for (let i = 0; i < 12; i++) state.particles.push({ x: state.player.x, y: state.player.y + 45, vx: (i - 5.5) * 18, vy: 40 + Math.abs(i - 5.5) * 8, life: .42, jump: true });
+    }
+
+    function update(dt) {
+      if (state.mode !== 'playing') return;
+      state.elapsed += dt;
+      state.score += dt * (12 + state.speed / 55);
+      state.speed = Math.min(560, 260 + state.elapsed * 10);
+      state.totalDistance += state.speed * dt;
+      state.levelDistance += state.speed * dt;
+      state.levelFlash = Math.max(0, state.levelFlash - dt);
+      state.levelBlend = Math.min(1, state.levelBlend + dt / 2);
+      const currentLevel = levels[state.level];
+      if (state.levelDistance >= currentLevel.length) {
+        state.levelDistance -= currentLevel.length;
+        state.previousLevel = state.level;
+        state.level = Math.min(state.level + 1, levels.length - 1);
+        state.spawnIndex = 0; state.spawnTimer = Math.max(state.spawnTimer, 1.05);
+        state.levelBlend = 0;
+        state.levelFlash = 2.2;
+      }
+      state.roadOffset = (state.roadOffset + state.speed * dt) % 150;
+      state.spawnTimer -= dt;
+      if (state.spawnTimer <= 0) {
+        spawnObstacle();
+        state.spawnTimer += Math.max(0.66, levels[state.level].interval - state.elapsed * 0.0025);
+      }
+
+      const keyboard = (keys.has('ArrowRight') ? 1 : 0) - (keys.has('ArrowLeft') ? 1 : 0);
+      const steering = keyboard || (cameraState === 'ready' ? cameraTilt : 0);
+      const playerRoadCenter = roadCenter(state.player.y);
+      state.player.x = Math.max(playerRoadCenter - 210, Math.min(playerRoadCenter + 210, state.player.x + steering * 330 * dt));
+      state.player.lean += (steering - state.player.lean) * Math.min(1, dt * 8);
+      state.player.invulnerable = Math.max(0, state.player.invulnerable - dt);
+      state.player.jumpRemaining = Math.max(0, state.player.jumpRemaining - dt);
+      state.player.jumpCooldown = Math.max(0, state.player.jumpCooldown - dt);
+      state.player.jumpPulse = Math.max(0, state.player.jumpPulse - dt * 2.4);
+      const jumpProgress = state.player.jumpRemaining > 0 ? 1 - state.player.jumpRemaining / 0.85 : 0;
+      const jumpHeight = state.player.jumpRemaining > 0 ? Math.sin(jumpProgress * Math.PI) * 90 : 0;
+      state.player.jumpHeight = jumpHeight;
+      state.trailTimer -= dt;
+      if (state.trailTimer <= 0) {
+        state.energyTrail.push({ x: state.player.x - state.player.lean * 5, y: state.player.y + 45, life: .58 });
+        state.trailTimer = .035;
+      }
+      for (const point of state.energyTrail) { point.y += state.speed * dt * .34; point.life -= dt; }
+      state.energyTrail = state.energyTrail.filter(point => point.life > 0 && point.y < 760);
+
+      for (const obstacle of state.obstacles) {
+        obstacle.y += state.speed * dt;
+        obstacle.x = roadCenter(obstacle.y) + (obstacle.laneIndex - 1) * 150;
+        if (!obstacle.hit && !obstacle.jumped && overlaps(state.player, obstacle)) {
+          if (jumpHeight > 24) {
+            if (!obstacle.jumped) { obstacle.jumped = true; state.clears += 1; state.score += 25; }
+          } else if (state.player.invulnerable === 0) {
+            crash(obstacle);
+          }
+        }
+      }
+      state.obstacles = state.obstacles.filter(obstacle => obstacle.y < 790 && !obstacle.hit);
+      for (const particle of state.particles) {
+        particle.x += particle.vx * dt; particle.y += particle.vy * dt; particle.life -= dt;
+      }
+      state.particles = state.particles.filter(particle => particle.life > 0);
+    }
+
+    function drawCar(car, alpha = 1) {
+      const traffic = trafficTypes[car.type];
+      context.save(); context.globalAlpha = alpha; context.translate(car.x, car.y);
+      context.fillStyle = '#0009'; context.beginPath(); context.ellipse(4, 8, car.width * .52, car.height * .48, 0, 0, Math.PI * 2); context.fill();
+      if (traffic.image.complete && traffic.image.naturalWidth) {
+        context.drawImage(traffic.image, -car.width / 2, -car.height / 2, car.width, car.height);
+      } else {
+        context.fillStyle = '#b6c4dc'; context.beginPath(); context.roundRect(-car.width / 2, -car.height / 2, car.width, car.height, 12); context.fill();
+      }
+      context.restore();
+    }
+
+    function drawCyberCity() {
+      context.fillStyle = '#080811'; context.fillRect(0, 0, 1000, 700);
+      if (!cityImage.complete || !cityImage.naturalWidth) return;
+      const offset = (state.elapsed * 72) % 1500;
+      context.globalAlpha = .84;
+      context.drawImage(cityImage, 0, offset - 1500, 1000, 1500);
+      context.drawImage(cityImage, 0, offset, 1000, 1500);
+      context.globalAlpha = 1;
+      const veil = context.createLinearGradient(0, 0, 1000, 0);
+      veil.addColorStop(0, '#05051022'); veil.addColorStop(.5, '#0b0a1900'); veil.addColorStop(1, '#05051022');
+      context.fillStyle = veil; context.fillRect(0, 0, 1000, 700);
+    }
+
+    function traceRoadEdge(offset) {
+      context.beginPath();
+      for (let y = -40; y <= 740; y += 20) {
+        const x = roadCenter(y) + offset;
+        if (y === -40) context.moveTo(x, y); else context.lineTo(x, y);
+      }
+    }
+
+    function traceRoadSurface() {
+      context.beginPath();
+      for (let y = -40; y <= 740; y += 20) context.lineTo(roadCenter(y) - 250, y);
+      for (let y = 740; y >= -40; y -= 20) context.lineTo(roadCenter(y) + 250, y);
+      context.closePath();
+    }
+
+    function drawMotorcycle(bike, alpha = 1) {
+      const lean = bike.lean;
+      const jumpHeight = bike.jumpHeight || 0;
+      context.save(); context.globalAlpha = alpha; context.translate(bike.x, bike.y);
+      context.fillStyle = `rgba(5, 8, 14, ${0.72 - jumpHeight / 165})`; context.beginPath(); context.ellipse(-lean * 5 + 5, 12, Math.max(11, 20 - jumpHeight * .07), Math.max(30, 56 - jumpHeight * .18), 0, 0, Math.PI * 2); context.fill();
+      if (jumpHeight > 8) {
+        context.strokeStyle = `rgba(255, 91, 45, ${jumpHeight / 120})`; context.lineWidth = 3;
+        for (const x of [-30, -20, 22, 32]) { context.beginPath(); context.moveTo(x, 30); context.lineTo(x - lean * 8, 65 + jumpHeight * .22); context.stroke(); }
+      }
+      context.translate(0, -jumpHeight * .58); context.scale(1 + jumpHeight / 260, 1 + jumpHeight / 260); context.rotate(lean * 0.24);
+      if (bikeImage.complete && bikeImage.naturalWidth) {
+        context.drawImage(bikeImage, -17, -67, 34, 134);
+      } else {
+        context.fillStyle = '#ed2f4d'; context.beginPath(); context.roundRect(-15, -58, 30, 116, 15); context.fill();
+        context.fillStyle = '#ffe06a'; context.fillRect(-8, -52, 16, 7);
+      }
+      context.restore();
+    }
+
+    function drawEnergyTrail() {
+      if (state.energyTrail.length < 2) return;
+      context.save(); context.lineCap = 'round'; context.lineJoin = 'round'; context.shadowColor = '#ff3b24'; context.shadowBlur = 18;
+      for (let index = 1; index < state.energyTrail.length; index++) {
+        const from = state.energyTrail[index - 1]; const to = state.energyTrail[index];
+        context.globalAlpha = Math.min(from.life, to.life) * 1.25;
+        context.strokeStyle = '#ff4a2c'; context.lineWidth = 8;
+        context.beginPath(); context.moveTo(from.x, from.y); context.lineTo(to.x, to.y); context.stroke();
+        context.strokeStyle = '#ffd0a8'; context.lineWidth = 2; context.stroke();
+      }
+      context.restore();
+    }
+
+    function drawTrackSignals() {
+      if (state.level === 0) return;
+      const color = state.level === 1 ? '#ff8a3d' : state.level === 2 ? '#5ee7ff' : '#ff4f35';
+      context.save(); context.strokeStyle = color; context.fillStyle = color; context.shadowColor = color; context.shadowBlur = 10;
+      for (let y = -90 + (state.roadOffset % 120); y < 760; y += 120) {
+        const direction = Math.sign(roadCenter(y + 30) - roadCenter(y - 30)) || 1;
+        const outside = direction > 0 ? 218 : -218; const x = roadCenter(y) + outside;
+        context.globalAlpha = .72; context.lineWidth = 4; context.beginPath();
+        context.moveTo(x - direction * 13, y - 11); context.lineTo(x + direction * 4, y); context.lineTo(x - direction * 13, y + 11); context.stroke();
+      }
+      if (state.level >= 2) {
+        const spacing = state.level === 2 ? 520 : 390;
+        for (let y = -spacing + (state.totalDistance % spacing); y < 760; y += spacing) {
+          context.globalAlpha = state.level === 2 ? .22 : .3; context.fillRect(roadCenter(y) - 205, y, 410, state.level === 2 ? 3 : 7);
+          if (state.level === 3) {
+            context.globalAlpha = .62;
+            for (let x = -150; x <= 150; x += 75) context.fillRect(roadCenter(y) + x - 24, y - 8, 48, 4);
+          }
+        }
+      }
+      context.restore();
+    }
+
+    function perspectivePoint(worldY, laneOffset = 0) {
+      const t = Math.max(0, Math.min(1, (worldY + 110) / 810)); const depth = t * t;
+      const curve = (roadCenter(worldY) - roadCenter(state.player.y)) * depth * .72;
+      const cameraLean = -state.player.lean * (1 - depth) * 34;
+      const playerLane = state.player.x - roadCenter(state.player.y); const roadWidth = 34 + depth * 348;
+      return { x: 500 + curve + cameraLean + (laneOffset - playerLane) / 250 * roadWidth, y: 154 + depth * 546 + (state.player.jumpHeight || 0) * .22, depth };
+    }
+
+    function drawFirstPersonCar(car) {
+      const traffic = trafficTypes[car.type]; const point = perspectivePoint(car.y, (car.laneIndex - 1) * 150); const size = .12 + point.depth * 1.18;
+      if (point.depth <= .01 || point.y > 760) return;
+      context.save(); context.translate(point.x, point.y); context.scale(size, size);
+      context.fillStyle = '#0009'; context.beginPath(); context.ellipse(4, 7, car.width * .53, car.height * .2, 0, 0, Math.PI * 2); context.fill();
+      if (traffic.image.complete && traffic.image.naturalWidth) context.drawImage(traffic.image, -car.width / 2, -car.height / 2, car.width, car.height);
+      else { context.fillStyle = '#d8dee9'; context.fillRect(-car.width / 2, -car.height / 2, car.width, car.height); }
+      context.restore();
+    }
+
+    function renderFirstPerson() {
+      context.setTransform(scale, 0, 0, scale, (width - 1000 * scale) / 2, (height - 700 * scale) / 2);
+      const sky = context.createLinearGradient(0, 0, 0, 700); sky.addColorStop(0, '#02040a'); sky.addColorStop(.42, '#101322'); sky.addColorStop(1, '#06070c'); context.fillStyle = sky; context.fillRect(0, 0, 1000, 700);
+      if (cityImage.complete && cityImage.naturalWidth) { context.globalAlpha = .58; context.drawImage(cityImage, 0, 70, 1000, 630); context.globalAlpha = 1; }
+      const left = []; const right = []; for (let y = -110; y <= 700; y += 20) { left.push(perspectivePoint(y, -250)); right.push(perspectivePoint(y, 250)); }
+      context.beginPath(); context.moveTo(left[0].x, left[0].y); for (const p of left) context.lineTo(p.x, p.y); for (let i = right.length - 1; i >= 0; i--) context.lineTo(right[i].x, right[i].y); context.closePath(); context.fillStyle = '#20232c'; context.fill();
+      context.strokeStyle = '#ff744d'; context.lineWidth = 5; context.shadowColor = '#ff4c2e'; context.shadowBlur = 10;
+      for (const side of [left, right]) { context.beginPath(); context.moveTo(side[0].x, side[0].y); for (const p of side) context.lineTo(p.x, p.y); context.stroke(); } context.shadowBlur = 0;
+      for (const lane of [-75, 75]) for (let y = -70 + state.roadOffset % 150; y < 700; y += 150) { const a = perspectivePoint(y, lane); const b = perspectivePoint(Math.min(700, y + 58), lane); context.strokeStyle = '#e7eaf0cc'; context.lineWidth = 1 + a.depth * 5; context.beginPath(); context.moveTo(a.x, a.y); context.lineTo(b.x, b.y); context.stroke(); }
+      for (let y = -50 + state.roadOffset % 120; y < 700; y += 120) { for (const lane of [-250, 250]) { const p = perspectivePoint(y, lane); context.fillStyle = '#ffb34f'; context.fillRect(p.x - 2 - p.depth * 4, p.y, 4 + p.depth * 8, 2 + p.depth * 12); } }
+      const visibleCars = [...state.obstacles].sort((a, b) => a.y - b.y); for (const car of visibleCars) drawFirstPersonCar(car);
+      context.save(); context.translate(500 + state.player.lean * 30, 650); context.rotate(state.player.lean * .055);
+      const screen = context.createLinearGradient(0, -135, 0, 20); screen.addColorStop(0, '#8feaff18'); screen.addColorStop(1, '#07111ec9'); context.fillStyle = screen; context.beginPath(); context.moveTo(-150, 20); context.lineTo(-105, -120); context.quadraticCurveTo(0, -155, 105, -120); context.lineTo(150, 20); context.closePath(); context.fill(); context.strokeStyle = '#ff563a88'; context.lineWidth = 4; context.stroke();
+      context.strokeStyle = '#151922'; context.lineWidth = 22; context.lineCap = 'round'; context.beginPath(); context.moveTo(-210, 36); context.lineTo(-72, -5); context.lineTo(0, 32); context.lineTo(72, -5); context.lineTo(210, 36); context.stroke();
+      context.fillStyle = '#ff4e31'; context.shadowColor = '#ff4e31'; context.shadowBlur = 16; context.fillRect(-28, 16, 56, 8); context.shadowBlur = 0; context.restore();
+      if (state.player.invulnerable > 0) { context.fillStyle = `rgba(255,55,35,${state.player.invulnerable * .12})`; context.fillRect(0, 0, 1000, 700); }
+      context.setTransform(1, 0, 0, 1, 0, 0);
+    }
+
+    function updateHud() {
+      const levelProgress = Math.min(100, Math.floor(state.levelDistance / levels[state.level].length * 100));
+      const displaySpeed = Math.round(state.speed); const gear = Math.min(6, Math.max(1, Math.floor(displaySpeed / 85)));
+      hudStageIndex.textContent = `Night run · Stage ${state.level + 1}/${levels.length}`; hudStageName.textContent = levels[state.level].name;
+      hudStagePercent.textContent = `${levelProgress}%`; stageFill.style.width = `${levelProgress}%`;
+      hudSpeed.textContent = displaySpeed; hudGear.textContent = gear; revFill.style.width = `${Math.min(100, 28 + (displaySpeed % 85) / 85 * 72)}%`;
+      hudScore.textContent = Math.floor(state.score); hudBest.textContent = Math.max(state.best, Math.floor(state.score)); hudLives.textContent = `${'●'.repeat(state.lives)}${'○'.repeat(3 - state.lives)}`;
+    }
+
+    function render() {
+      if (viewMode === 'first-person') { renderFirstPerson(); updateHud(); return; }
+      context.setTransform(scale, 0, 0, scale, (width - 1000 * scale) / 2, (height - 700 * scale) / 2);
+      drawCyberCity();
+      context.save(); traceRoadSurface(); context.clip();
+      if (roadImage.complete && roadImage.naturalWidth) {
+        const roadTextureOffset = state.totalDistance % 1500;
+        context.drawImage(roadImage, 0, roadTextureOffset - 1500, 1000, 1500);
+        context.drawImage(roadImage, 0, roadTextureOffset, 1000, 1500);
+      } else {
+        context.fillStyle = '#1b1d26'; context.fillRect(0, 0, 1000, 700);
+      }
+      context.fillStyle = '#11152255'; context.fillRect(0, 0, 1000, 700); context.restore();
+      context.shadowBlur = 0; context.strokeStyle = '#7d8794'; context.lineWidth = 6;
+      traceRoadEdge(-250); context.stroke();
+      traceRoadEdge(250); context.stroke();
+      context.strokeStyle = '#c3c8d0bb'; context.lineWidth = 4; context.setLineDash([48, 102]); context.lineDashOffset = -state.roadOffset;
+      for (const laneOffset of [-75, 75]) { traceRoadEdge(laneOffset); context.stroke(); }
+      context.setLineDash([]); context.shadowBlur = 0;
+      for (let y = -80 + state.roadOffset; y < 760; y += 150) {
+        context.fillStyle = '#d6a758'; context.fillRect(roadCenter(y) - 264, y, 5, 42);
+        context.fillRect(roadCenter(y) + 259, y, 5, 42);
+      }
+      drawTrackSignals();
+      drawEnergyTrail();
+      for (const obstacle of state.obstacles) drawCar(obstacle);
+      const blink = state.player.invulnerable > 0 && Math.floor(state.player.invulnerable * 10) % 2 === 0;
+      drawMotorcycle(state.player, blink ? 0.3 : 1);
+      context.fillStyle = '#ffd166'; for (const p of state.particles) { context.globalAlpha = Math.max(0, p.life * 2); context.fillRect(p.x - 5, p.y - 5, 10, 10); } context.globalAlpha = 1;
+      if (state.levelFlash > 0) {
+        context.fillStyle = '#050711bb'; context.beginPath(); context.roundRect(360, 300, 280, 82, 18); context.fill();
+        context.fillStyle = '#fff'; context.font = '700 16px system-ui'; context.textAlign = 'center'; context.fillText(`LEVEL ${state.level + 1}`, 500, 332);
+        context.fillStyle = '#ff7545'; context.font = '800 23px system-ui'; context.fillText(levels[state.level].name, 500, 358);
+        context.fillStyle = '#cbd2dc'; context.font = '600 12px system-ui'; context.fillText(levels[state.level].subtitle.toUpperCase(), 500, 376); context.textAlign = 'start';
+      }
+      updateHud();
+      context.setTransform(1, 0, 0, 1, 0, 0);
+    }
+
+    function loop(now) {
+      const dt = Math.min(0.033, (now - lastFrame) / 1000);
+      lastFrame = now;
+      if (!testingMode) update(dt);
+      render();
+      requestAnimationFrame(loop);
+    }
+    requestAnimationFrame(loop);
+
+    function updateInputControls() {
+      const cameraOn = cameraState !== 'off' && cameraState !== 'error';
+      cameraButton.setAttribute('aria-pressed', String(cameraOn));
+      cameraButton.textContent = cameraOn ? 'Disable camera' : 'Enable camera';
+      centerButton.disabled = cameraState !== 'ready';
+    }
+
+    function beginCameraCalibration(title) {
+      cameraState = 'calibrating'; cameraSamples = []; calibrationStableMs = 0; calibrationLastFrame = 0;
+      neutralRoll = 0; neutralPitch = 0; previousCameraPitch = 0;
+      status.textContent = 'Align your face';
+      cameraOverlay.hidden = false; calibrationTitle.textContent = title; calibrationCopy.textContent = 'Center your face in the guide.';
+      cameraPreview.dataset.quality = 'align'; calibrationFill.style.width = '0%'; calibrationProgress.setAttribute('aria-valuenow', '0');
+      updateInputControls();
+    }
+
+    function median(values) {
+      const sorted = [...values].sort((a, b) => a - b);
+      return sorted[Math.floor(sorted.length / 2)];
+    }
+
+    async function enableCamera() {
+      if (cameraState === 'loading' || cameraState === 'ready') return;
+      const requestId = ++cameraRequestId;
+      cameraState = 'loading'; status.textContent = 'Requesting camera permission…'; updateInputControls();
+      cameraOverlay.hidden = false; calibrationTitle.textContent = 'Starting camera…'; calibrationCopy.textContent = 'Camera video stays on this device.'; calibrationFill.style.width = '0%';
+      try {
+        cameraStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } }, audio: false });
+        if (requestId !== cameraRequestId) { for (const track of cameraStream.getTracks()) track.stop(); cameraStream = undefined; return; }
+        cameraVideo.srcObject = cameraStream; await cameraVideo.play(); calibrationTitle.textContent = 'Loading head tracking…';
+        const vision = await import('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.35/+esm');
+        const files = await vision.FilesetResolver.forVisionTasks('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.35/wasm');
+        const createdFaceLandmarker = await vision.FaceLandmarker.createFromOptions(files, {
+          baseOptions: { modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task', delegate: 'CPU' },
+          runningMode: 'VIDEO', numFaces: 1, minFaceDetectionConfidence: .55, minFacePresenceConfidence: .55, minTrackingConfidence: .55
+        });
+        if (requestId !== cameraRequestId) { createdFaceLandmarker.close(); return; }
+        faceLandmarker?.close(); faceLandmarker = createdFaceLandmarker;
+        beginCameraCalibration('Set your neutral position');
+        requestAnimationFrame(trackCamera);
+      } catch (error) {
+        cameraState = 'error'; cameraOverlay.hidden = true;
+        status.textContent = error?.name === 'NotAllowedError' ? 'Camera denied · keyboard mode' : `Camera error · ${String(error?.message || error).slice(0, 54)}`;
+        stopCamera(); updateInputControls();
+      }
+    }
+
+    function trackCamera(now) {
+      if (!faceLandmarker || !cameraStream) return;
+      if (now - lastCameraFrame >= 66 && cameraVideo.readyState >= 2) {
+        lastCameraFrame = now;
+        const result = faceLandmarker.detectForVideo(cameraVideo, now);
+        const face = result.faceLandmarks?.[0];
+        if (face) {
+          const leftEye = face[33]; const rightEye = face[263]; const nose = face[1]; const leftMouth = face[61]; const rightMouth = face[291];
+          const eyeMidY = (leftEye.y + rightEye.y) / 2; const mouthMidY = (leftMouth.y + rightMouth.y) / 2;
+          cameraRoll = Math.atan2(rightEye.y - leftEye.y, rightEye.x - leftEye.x) * 180 / Math.PI;
+          cameraPitch = (nose.y - eyeMidY) / Math.max(.03, mouthMidY - eyeMidY);
+          if (cameraState === 'calibrating') {
+            const xs = face.map(point => point.x); const ys = face.map(point => point.y);
+            const faceWidth = Math.max(...xs) - Math.min(...xs); const faceHeight = Math.max(...ys) - Math.min(...ys);
+            const faceX = (Math.max(...xs) + Math.min(...xs)) / 2; const faceY = (Math.max(...ys) + Math.min(...ys)) / 2;
+            const framed = Math.abs(faceX - .5) < .13 && Math.abs(faceY - .5) < .16 && faceWidth > .22 && faceWidth < .58 && faceHeight < .76;
+            const recent = cameraSamples.slice(-5);
+            const steady = recent.length < 3 || (Math.max(...recent.map(sample => sample.roll)) - Math.min(...recent.map(sample => sample.roll)) < 2.2 && Math.max(...recent.map(sample => sample.pitch)) - Math.min(...recent.map(sample => sample.pitch)) < .045);
+            const deltaMs = calibrationLastFrame ? Math.min(100, now - calibrationLastFrame) : 0; calibrationLastFrame = now;
+            if (!framed) {
+              calibrationStableMs = Math.max(0, calibrationStableMs - deltaMs * 1.5); cameraSamples = [];
+              cameraPreview.dataset.quality = 'align';
+              calibrationCopy.textContent = faceWidth <= .22 ? 'Move a little closer.' : faceWidth >= .58 || faceHeight >= .76 ? 'Move a little farther back.' : 'Center your face in the guide.';
+            } else if (!steady) {
+              calibrationStableMs = Math.max(0, calibrationStableMs - deltaMs); cameraSamples = [];
+              cameraPreview.dataset.quality = 'align'; calibrationCopy.textContent = 'Hold your head still.';
+            } else {
+              calibrationStableMs += deltaMs; cameraSamples.push({ roll: cameraRoll, pitch: cameraPitch });
+              cameraPreview.dataset.quality = 'good'; calibrationCopy.textContent = 'Great — hold this comfortable position.';
+            }
+            const calibrationPercent = Math.min(100, Math.round(calibrationStableMs / 1200 * 100));
+            calibrationFill.style.width = `${calibrationPercent}%`; calibrationProgress.setAttribute('aria-valuenow', String(calibrationPercent));
+            if (calibrationStableMs >= 1200 && cameraSamples.length >= 8) {
+              neutralRoll = median(cameraSamples.map(sample => sample.roll)); neutralPitch = median(cameraSamples.map(sample => sample.pitch)); previousCameraPitch = cameraPitch;
+              cameraState = 'ready'; status.textContent = 'Camera controls active'; status.dataset.connected = 'true'; cameraOverlay.hidden = true; updateInputControls();
+            }
+          } else if (cameraState === 'ready') {
+            status.textContent = 'Camera controls active';
+            const rollDelta = cameraRoll - neutralRoll;
+            cameraTilt = Math.abs(rollDelta) < 3 ? 0 : Math.max(-1, Math.min(1, -rollDelta / 22));
+            cameraPitchDelta = cameraPitch - previousCameraPitch; previousCameraPitch += cameraPitchDelta * .35;
+            if (Math.abs(cameraPitchDelta) > .115) jump();
+          }
+        } else if (cameraState === 'calibrating') {
+          calibrationStableMs = 0; cameraSamples = []; calibrationLastFrame = now; calibrationFill.style.width = '0%'; calibrationProgress.setAttribute('aria-valuenow', '0');
+          cameraPreview.dataset.quality = 'align'; calibrationCopy.textContent = 'Move into the camera view.';
+        } else if (cameraState === 'ready') {
+          cameraTilt = 0; status.textContent = 'Face not found · keyboard mode';
+        }
+      }
+      requestAnimationFrame(trackCamera);
+    }
+
+    function stopCamera() {
+      cameraRequestId += 1;
+      for (const track of cameraStream?.getTracks() || []) track.stop();
+      cameraStream = undefined; cameraVideo.srcObject = null; cameraTilt = 0; cameraState = 'off'; cameraOverlay.hidden = true;
+    }
+
+    function toggleCamera() {
+      if (cameraState === 'off' || cameraState === 'error') enableCamera();
+      else { stopCamera(); status.textContent = 'Camera off · keyboard ready'; status.dataset.connected = 'false'; }
+      updateInputControls();
+    }
+
+    cameraButton.addEventListener('click', toggleCamera);
+    addEventListener('pagehide', stopCamera);
+
+    centerButton.addEventListener('click', () => {
+      cameraTilt = 0;
+      if (cameraState === 'ready') beginCameraCalibration('Recenter head controls');
+    });
+    startButton.addEventListener('click', resetGame);
+    viewButton.addEventListener('click', () => { viewMode = viewMode === 'first-person' ? 'top-down' : 'first-person'; viewButton.textContent = viewMode === 'first-person' ? 'Top down' : 'First person'; render(); });
+    fullscreenButton.addEventListener('click', () => document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen());
+    addEventListener('keydown', event => {
+      keys.add(event.key);
+      if (event.key === 'Enter' && state.mode !== 'playing') resetGame();
+      if (event.code === 'Space') { event.preventDefault(); jump(); }
+      if (event.key.toLowerCase() === 'v') viewButton.click();
+      if (event.key.toLowerCase() === 'f') fullscreenButton.click();
+    });
+    addEventListener('keyup', event => keys.delete(event.key));
+
+    window.render_game_to_text = () => JSON.stringify({
+      coordinateSystem: 'logical 1000x700; origin top-left; x right; y down', mode: state.mode,
+      player: { type: 'light-cycle', x: +state.player.x.toFixed(1), y: state.player.y, lean: +state.player.lean.toFixed(2), jumpHeight: +(state.player.jumpHeight || 0).toFixed(1), jumpCooldown: +state.player.jumpCooldown.toFixed(2), invulnerable: +state.player.invulnerable.toFixed(2), trailPoints: state.energyTrail.length },
+      level: { number: state.level + 1, name: levels[state.level].name, distance: Math.floor(state.levelDistance), target: levels[state.level].length, roadBlend: +state.levelBlend.toFixed(2) }, roadCenterAtPlayer: +roadCenter(state.player.y).toFixed(1), obstacles: state.obstacles.map(o => ({ type: trafficTypes[o.type].name, lane: o.laneIndex, x: +o.x.toFixed(1), y: +o.y.toFixed(1) })), score: Math.floor(state.score),
+      best: state.best, lives: state.lives, clears: state.clears, jumps: state.jumps, speed: Math.round(state.speed),
+      connected: cameraState === 'ready', input: cameraState === 'ready' ? 'camera' : 'keyboard', camera: { state: cameraState, roll: +cameraRoll.toFixed(2), pitch: +cameraPitch.toFixed(3), pitchDelta: +cameraPitchDelta.toFixed(3), tilt: +cameraTilt.toFixed(2), calibrationQuality: cameraPreview.dataset.quality, calibrationProgress: Math.min(100, Math.round(calibrationStableMs / 1200 * 100)) }, view: viewMode, fullscreen: Boolean(document.fullscreenElement)
+    });
+    window.advanceTime = ms => {
+      testingMode = true;
+      const steps = Math.max(1, Math.round(ms / (1000 / 60)));
+      for (let i = 0; i < steps; i++) update(1 / 60);
+      render();
+    };
+  </script>
+</body>
+</html>

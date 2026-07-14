@@ -3,12 +3,12 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Tilt Rush V1 — Top Down</title>
+  <title>Tilt Rush V2 — First Person</title>
   <style>
     :root { color-scheme: dark; font-family: ui-rounded, system-ui, sans-serif; }
     * { box-sizing: border-box; }
     body { margin: 0; overflow: hidden; background: #09051a; color: #fff; }
-    canvas { display: block; width: 100vw; height: 100vh; }
+    canvas { position: fixed; inset: 0; display: block; width: 100vw; height: 100vh; }
     .camera-calibration { position: fixed; z-index: 5; inset: 0; display: grid; place-items: center; padding: 20px; background: #02050dcc; backdrop-filter: blur(10px); }
     .camera-calibration[hidden] { display: none; }
     .calibration-card { width: min(380px, calc(100vw - 40px)); padding: 20px; border: 1px solid #66ffb680; border-radius: 22px; background: #07130fee; box-shadow: 0 24px 80px #000b; text-align: center; }
@@ -62,9 +62,12 @@
     #hud-lives { color: #ff765c; letter-spacing: .08em; }
     @media (max-width: 760px) { .topbar { inset: 10px 10px auto; gap: 8px; } .race-hud { width: 58vw; } .speed-hud { width: 37vw; } #hud-speed { font-size: 38px; } .actions > button { display: none; } .input-switch button { padding-inline: 8px; } .race-heading { padding: 10px 12px 7px; } #hud-stage-name { font-size: 16px; } }
   </style>
+  <script type="importmap">
+    { "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.185.1/build/three.module.js" } }
+  </script>
 </head>
 <body>
-  <canvas id="game" aria-label="Tilt Rush racing game"></canvas>
+  <canvas id="three-game" aria-label="Tilt Rush V2 first-person racing game"></canvas>
   <div class="camera-calibration" id="camera-calibration" hidden>
     <section class="calibration-card" role="dialog" aria-modal="true" aria-labelledby="calibration-title">
       <h2 id="calibration-title">Starting camera…</h2>
@@ -87,15 +90,16 @@
   </div>
   <div class="menu" id="menu">
     <div class="card">
-      <h1>Tilt Rush V1</h1>
+      <h1>Tilt Rush V2</h1>
       <p id="message">Tilt your head to carve. Flick up to jump traffic.<br>Camera video stays on this device and is never uploaded.</p>
-      <p>Top-down edition · <kbd>←</kbd> <kbd>→</kbd> steer · <kbd>Space</kbd> jump · <kbd>F</kbd> fullscreen</p>
+      <p>First-person edition · <kbd>←</kbd> <kbd>→</kbd> steer · <kbd>Space</kbd> jump · <kbd>F</kbd> fullscreen</p>
       <button id="start" type="button">Start run</button>
     </div>
   </div>
-  <script>
-    const canvas = document.querySelector('#game');
-    const context = canvas.getContext('2d');
+  <script type="module">
+    import * as THREE from 'three';
+
+    const threeCanvas = document.querySelector('#three-game');
     const status = document.querySelector('#status');
     const cameraButton = document.querySelector('#camera');
     const cameraVideo = document.querySelector('#camera-feed');
@@ -121,12 +125,6 @@
     const menu = document.querySelector('#menu');
     const message = document.querySelector('#message');
     const startButton = document.querySelector('#start');
-    const bikeImage = new Image();
-    bikeImage.src = 'assets/light-cycle-v1.png';
-    const cityImage = new Image();
-    cityImage.src = 'assets/cyber-city-v2.webp';
-    const roadImage = new Image();
-    roadImage.src = 'assets/wet-asphalt-v1.webp';
     const levels = [
       { name: 'Ignition Mile', subtitle: 'Learn the lanes', length: 2600, curve: 'straight', interval: 1.3, pattern: [[1], [0], [2], [1], [0], [2]] },
       { name: 'Dockside Sweep', subtitle: 'Read the long bend', length: 3600, curve: 'sweep', interval: 1.12, pattern: [[0], [2], [1], [0, 1], [2], [1]] },
@@ -139,11 +137,7 @@
       { name: 'Cybercab', src: 'assets/traffic/cybercab.png', width: 54, height: 116 },
       { name: 'Cybertruck', src: 'assets/traffic/cybertruck.png', width: 58, height: 126 }
     ];
-    for (const traffic of trafficTypes) { traffic.image = new Image(); traffic.image.src = traffic.src; }
     const keys = new Set();
-    let width = 0;
-    let height = 0;
-    let scale = 1;
     let cameraRequestId = 0;
     let cameraTilt = 0;
     let cameraState = 'off';
@@ -161,17 +155,166 @@
     let previousCameraPitch = 0;
     let testingMode = false;
     let lastFrame = performance.now();
+    let normalizedSteering = 0;
+
+    const threeRenderer = new THREE.WebGLRenderer({ canvas: threeCanvas, antialias: true });
+    threeRenderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+    threeRenderer.outputColorSpace = THREE.SRGBColorSpace;
+    const threeScene = new THREE.Scene();
+    threeScene.background = new THREE.Color(0x070b14);
+    threeScene.fog = new THREE.Fog(0x070b14, 24, 105);
+    const threeCamera = new THREE.PerspectiveCamera(66, innerWidth / innerHeight, 0.1, 140);
+    threeCamera.position.set(0, 2.35, 8);
+    threeCamera.lookAt(0, 0.45, -34);
+
+    const hemisphereLight = new THREE.HemisphereLight(0x8fc8ff, 0x24120c, 2.2);
+    threeScene.add(hemisphereLight);
+
+    const COURSE_LENGTH = 370;
+    const COURSE_GEOMETRY_LENGTH = 430;
+    const COURSE_DISTANCE_SCALE = levels.reduce((total, level) => total + level.length, 0) / COURSE_LENGTH;
+
+    function smoothstep01(value) {
+      const t = Math.max(0, Math.min(1, value));
+      return t * t * (3 - 2 * t);
+    }
+
+    function courseProfileAt(distance) {
+      const progress = Math.max(0, Math.min(COURSE_GEOMETRY_LENGTH, distance));
+      const curve = smoothstep01((progress - 55) / 130);
+      let elevation = 0;
+      if (progress >= 140 && progress < 250) elevation = 12 * smoothstep01((progress - 140) / 110);
+      else if (progress < 285 && progress >= 250) elevation = 12;
+      else if (progress >= 285) elevation = 12 - 11 * smoothstep01((progress - 285) / 85);
+
+      let segment = 'straight';
+      if (progress >= 55 && progress < 170) segment = 'curve';
+      else if (progress >= 170 && progress < 250) segment = 'climb';
+      else if (progress >= 250 && progress < 285) segment = 'crest';
+      else if (progress >= 285) segment = 'descent';
+
+      return { progress, x: curve * 15, y: elevation, z: -progress, segment };
+    }
+
+    function courseFrameAt(distance) {
+      const profile = courseProfileAt(distance);
+      const behind = courseProfileAt(Math.max(0, profile.progress - 0.5));
+      const ahead = courseProfileAt(Math.min(COURSE_GEOMETRY_LENGTH, profile.progress + 0.5));
+      const point = new THREE.Vector3(profile.x, profile.y, profile.z);
+      const tangent = new THREE.Vector3(ahead.x - behind.x, ahead.y - behind.y, ahead.z - behind.z).normalize();
+      const right = new THREE.Vector3(-tangent.z, 0, tangent.x).normalize();
+      return { ...profile, point, tangent, right };
+    }
+
+    function currentCourseProgress() {
+      return Math.min(COURSE_LENGTH, state.totalDistance / COURSE_DISTANCE_SCALE);
+    }
+
+    function createRoadGeometry() {
+      const positions = [];
+      const indices = [];
+      const step = 2;
+      for (let distance = 0; distance <= COURSE_GEOMETRY_LENGTH; distance += step) {
+        const frame = courseFrameAt(distance);
+        const left = frame.point.clone().addScaledVector(frame.right, -5);
+        const right = frame.point.clone().addScaledVector(frame.right, 5);
+        positions.push(left.x, left.y, left.z, right.x, right.y, right.z);
+      }
+      const rowCount = COURSE_GEOMETRY_LENGTH / step + 1;
+      for (let row = 0; row < rowCount - 1; row++) {
+        const left = row * 2;
+        const right = left + 1;
+        const nextLeft = left + 2;
+        const nextRight = left + 3;
+        indices.push(left, right, nextLeft, right, nextRight, nextLeft);
+      }
+      const geometry = new THREE.BufferGeometry();
+      geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+      geometry.setIndex(indices);
+      geometry.computeVertexNormals();
+      return geometry;
+    }
+
+    const road = new THREE.Mesh(
+      createRoadGeometry(),
+      new THREE.MeshStandardMaterial({ color: 0x292d36, roughness: 0.92 })
+    );
+    threeScene.add(road);
+
+    const boundaryMaterial = new THREE.MeshStandardMaterial({ color: 0xff7048, emissive: 0x5c1608, emissiveIntensity: 1.1 });
+    for (const side of [-1, 1]) {
+      const points = [];
+      for (let distance = 0; distance <= COURSE_GEOMETRY_LENGTH; distance += 2) {
+        const frame = courseFrameAt(distance);
+        const point = frame.point.clone().addScaledVector(frame.right, side * 5.05);
+        point.y += 0.1;
+        points.push(point);
+      }
+      const boundaryCurve = new THREE.CatmullRomCurve3(points, false, 'centripetal');
+      const boundary = new THREE.Mesh(new THREE.TubeGeometry(boundaryCurve, 240, 0.09, 6, false), boundaryMaterial);
+      threeScene.add(boundary);
+    }
+
+    const markerGeometry = new THREE.BoxGeometry(0.09, 0.035, 2.7);
+    const markerMaterial = new THREE.MeshStandardMaterial({ color: 0xe9edf4, emissive: 0x35383d, emissiveIntensity: 0.5 });
+    const markerForward = new THREE.Vector3(0, 0, 1);
+    for (let distance = 5; distance < COURSE_GEOMETRY_LENGTH; distance += 7) {
+      const frame = courseFrameAt(distance);
+      for (const lane of [-1.65, 1.65]) {
+        const marker = new THREE.Mesh(markerGeometry, markerMaterial);
+        marker.position.copy(frame.point).addScaledVector(frame.right, lane);
+        marker.position.y += 0.035;
+        marker.quaternion.setFromUnitVectors(markerForward, frame.tangent);
+        threeScene.add(marker);
+      }
+    }
+
+    const roadsideGeometry = new THREE.BoxGeometry(0.14, 1.25, 0.14);
+    const roadsideMaterial = new THREE.MeshStandardMaterial({ color: 0xffb35a, emissive: 0x6b2b08, emissiveIntensity: 1.2 });
+    for (let distance = 10; distance < COURSE_GEOMETRY_LENGTH; distance += 14) {
+      const frame = courseFrameAt(distance);
+      for (const side of [-1, 1]) {
+        const roadsideMarker = new THREE.Mesh(roadsideGeometry, roadsideMaterial);
+        roadsideMarker.position.copy(frame.point).addScaledVector(frame.right, side * 5.55);
+        roadsideMarker.position.y += 0.62;
+        threeScene.add(roadsideMarker);
+      }
+    }
+
+    threeScene.add(threeCamera);
+    const cockpit = new THREE.Group();
+    threeCamera.add(cockpit);
+    const cockpitMaterial = new THREE.MeshStandardMaterial({ color: 0x252b35, roughness: 0.72, metalness: 0.28 });
+    const cockpitAccentMaterial = new THREE.MeshStandardMaterial({ color: 0xff5c35, emissive: 0x711a08, emissiveIntensity: 1.4 });
+    const fairing = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.38, 0.95), cockpitMaterial);
+    fairing.position.set(0, -1.05, -1.72);
+    fairing.rotation.x = -0.12;
+    cockpit.add(fairing);
+    const handlebar = new THREE.Mesh(new THREE.BoxGeometry(1.65, 0.08, 0.08), cockpitMaterial);
+    handlebar.position.set(0, -0.78, -1.48);
+    cockpit.add(handlebar);
+    const dash = new THREE.Mesh(new THREE.BoxGeometry(0.48, 0.2, 0.12), cockpitAccentMaterial);
+    dash.position.set(0, -0.79, -1.34);
+    cockpit.add(dash);
+    const windshield = new THREE.Mesh(
+      new THREE.PlaneGeometry(1.16, 0.46),
+      new THREE.MeshStandardMaterial({ color: 0x8fdcff, transparent: true, opacity: 0.2, side: THREE.DoubleSide })
+    );
+    windshield.position.set(0, -0.56, -1.63);
+    windshield.rotation.x = -0.2;
+    cockpit.add(windshield);
 
     const state = {
-      mode: 'ready', score: 0, best: Number(localStorage.getItem('tilt-rush-v1-best') || 0), lives: 3, clears: 0, jumps: 0,
+      mode: 'ready', score: 0, best: Number(localStorage.getItem('tilt-rush-v2-best') || 0), lives: 3, clears: 0, jumps: 0,
       elapsed: 0, speed: 260, spawnTimer: 1.1, spawnIndex: 0, roadOffset: 0, level: 0, previousLevel: 0, levelBlend: 1, levelDistance: 0, totalDistance: 0, levelFlash: 0,
       player: { x: 500, y: 590, width: 30, height: 104, lean: 0, jumpRemaining: 0, jumpCooldown: 0, invulnerable: 0, jumpPulse: 0 }, obstacles: [], particles: [], energyTrail: [], trailTimer: 0
     };
 
     function resize() {
-      width = canvas.width = innerWidth * devicePixelRatio;
-      height = canvas.height = innerHeight * devicePixelRatio;
-      scale = Math.min(width / 1000, height / 700);
+      threeRenderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+      threeRenderer.setSize(innerWidth, innerHeight, false);
+      threeCamera.aspect = innerWidth / innerHeight;
+      threeCamera.updateProjectionMatrix();
     }
     addEventListener('resize', resize);
     resize();
@@ -179,6 +322,7 @@
     function resetGame() {
       Object.assign(state, { mode: 'playing', score: 0, lives: 3, clears: 0, jumps: 0, elapsed: 0, speed: 260, spawnTimer: 1.1, spawnIndex: 0, roadOffset: 0, level: 0, previousLevel: 0, levelBlend: 1, levelDistance: 0, totalDistance: 0, levelFlash: 2.2, obstacles: [], particles: [], energyTrail: [], trailTimer: 0 });
       Object.assign(state.player, { x: 500, y: 590, lean: 0, jumpRemaining: 0, jumpHeight: 0, jumpCooldown: 0, invulnerable: 0, jumpPulse: 0 });
+      normalizedSteering = 0;
       menu.hidden = true;
       render();
     }
@@ -186,7 +330,7 @@
     function finishGame() {
       state.mode = 'gameover';
       state.best = Math.max(state.best, Math.floor(state.score));
-      localStorage.setItem('tilt-rush-v1-best', state.best);
+      localStorage.setItem('tilt-rush-v2-best', state.best);
       message.innerHTML = `Run over — <strong>${Math.floor(state.score)}</strong> points.<br>Best score: ${state.best}`;
       startButton.textContent = 'Race again';
       menu.hidden = false;
@@ -195,7 +339,7 @@
     function completeCourse() {
       state.mode = 'complete';
       state.best = Math.max(state.best, Math.floor(state.score));
-      localStorage.setItem('tilt-rush-v1-best', state.best);
+      localStorage.setItem('tilt-rush-v2-best', state.best);
       message.innerHTML = `Course complete — <strong>${Math.floor(state.score)}</strong> points.<br>Best score: ${state.best}`;
       startButton.textContent = 'Race again';
       menu.hidden = false;
@@ -225,6 +369,10 @@
       const current = levelRoadCenter(state.level, y);
       const blend = state.levelBlend * state.levelBlend * (3 - 2 * state.levelBlend);
       return previous + (current - previous) * blend;
+    }
+
+    function playerCourseLateral() {
+      return Math.max(-1, Math.min(1, (state.player.x - roadCenter(state.player.y)) / 210));
     }
 
     function overlaps(a, b) {
@@ -279,10 +427,10 @@
       }
 
       const keyboard = (keys.has('ArrowRight') ? 1 : 0) - (keys.has('ArrowLeft') ? 1 : 0);
-      const steering = keyboard || (cameraState === 'ready' ? cameraTilt : 0);
+      normalizedSteering = keyboard || (cameraState === 'ready' ? cameraTilt : 0);
       const playerRoadCenter = roadCenter(state.player.y);
-      state.player.x = Math.max(playerRoadCenter - 210, Math.min(playerRoadCenter + 210, state.player.x + steering * 330 * dt));
-      state.player.lean += (steering - state.player.lean) * Math.min(1, dt * 8);
+      state.player.x = Math.max(playerRoadCenter - 210, Math.min(playerRoadCenter + 210, state.player.x + normalizedSteering * 330 * dt));
+      state.player.lean += (normalizedSteering - state.player.lean) * Math.min(1, dt * 8);
       state.player.invulnerable = Math.max(0, state.player.invulnerable - dt);
       state.player.jumpRemaining = Math.max(0, state.player.jumpRemaining - dt);
       state.player.jumpCooldown = Math.max(0, state.player.jumpCooldown - dt);
@@ -316,101 +464,6 @@
       state.particles = state.particles.filter(particle => particle.life > 0);
     }
 
-    function drawCar(car, alpha = 1) {
-      const traffic = trafficTypes[car.type];
-      context.save(); context.globalAlpha = alpha; context.translate(car.x, car.y);
-      context.fillStyle = '#0009'; context.beginPath(); context.ellipse(4, 8, car.width * .52, car.height * .48, 0, 0, Math.PI * 2); context.fill();
-      if (traffic.image.complete && traffic.image.naturalWidth) {
-        context.drawImage(traffic.image, -car.width / 2, -car.height / 2, car.width, car.height);
-      } else {
-        context.fillStyle = '#b6c4dc'; context.beginPath(); context.roundRect(-car.width / 2, -car.height / 2, car.width, car.height, 12); context.fill();
-      }
-      context.restore();
-    }
-
-    function drawCyberCity() {
-      context.fillStyle = '#080811'; context.fillRect(0, 0, 1000, 700);
-      if (!cityImage.complete || !cityImage.naturalWidth) return;
-      const offset = (state.elapsed * 72) % 1500;
-      context.globalAlpha = .84;
-      context.drawImage(cityImage, 0, offset - 1500, 1000, 1500);
-      context.drawImage(cityImage, 0, offset, 1000, 1500);
-      context.globalAlpha = 1;
-      const veil = context.createLinearGradient(0, 0, 1000, 0);
-      veil.addColorStop(0, '#05051022'); veil.addColorStop(.5, '#0b0a1900'); veil.addColorStop(1, '#05051022');
-      context.fillStyle = veil; context.fillRect(0, 0, 1000, 700);
-    }
-
-    function traceRoadEdge(offset) {
-      context.beginPath();
-      for (let y = -40; y <= 740; y += 20) {
-        const x = roadCenter(y) + offset;
-        if (y === -40) context.moveTo(x, y); else context.lineTo(x, y);
-      }
-    }
-
-    function traceRoadSurface() {
-      context.beginPath();
-      for (let y = -40; y <= 740; y += 20) context.lineTo(roadCenter(y) - 250, y);
-      for (let y = 740; y >= -40; y -= 20) context.lineTo(roadCenter(y) + 250, y);
-      context.closePath();
-    }
-
-    function drawMotorcycle(bike, alpha = 1) {
-      const lean = bike.lean;
-      const jumpHeight = bike.jumpHeight || 0;
-      context.save(); context.globalAlpha = alpha; context.translate(bike.x, bike.y);
-      context.fillStyle = `rgba(5, 8, 14, ${0.72 - jumpHeight / 165})`; context.beginPath(); context.ellipse(-lean * 5 + 5, 12, Math.max(11, 20 - jumpHeight * .07), Math.max(30, 56 - jumpHeight * .18), 0, 0, Math.PI * 2); context.fill();
-      if (jumpHeight > 8) {
-        context.strokeStyle = `rgba(255, 91, 45, ${jumpHeight / 120})`; context.lineWidth = 3;
-        for (const x of [-30, -20, 22, 32]) { context.beginPath(); context.moveTo(x, 30); context.lineTo(x - lean * 8, 65 + jumpHeight * .22); context.stroke(); }
-      }
-      context.translate(0, -jumpHeight * .58); context.scale(1 + jumpHeight / 260, 1 + jumpHeight / 260); context.rotate(lean * 0.24);
-      if (bikeImage.complete && bikeImage.naturalWidth) {
-        context.drawImage(bikeImage, -17, -67, 34, 134);
-      } else {
-        context.fillStyle = '#ed2f4d'; context.beginPath(); context.roundRect(-15, -58, 30, 116, 15); context.fill();
-        context.fillStyle = '#ffe06a'; context.fillRect(-8, -52, 16, 7);
-      }
-      context.restore();
-    }
-
-    function drawEnergyTrail() {
-      if (state.energyTrail.length < 2) return;
-      context.save(); context.lineCap = 'round'; context.lineJoin = 'round'; context.shadowColor = '#ff3b24'; context.shadowBlur = 18;
-      for (let index = 1; index < state.energyTrail.length; index++) {
-        const from = state.energyTrail[index - 1]; const to = state.energyTrail[index];
-        context.globalAlpha = Math.min(from.life, to.life) * 1.25;
-        context.strokeStyle = '#ff4a2c'; context.lineWidth = 8;
-        context.beginPath(); context.moveTo(from.x, from.y); context.lineTo(to.x, to.y); context.stroke();
-        context.strokeStyle = '#ffd0a8'; context.lineWidth = 2; context.stroke();
-      }
-      context.restore();
-    }
-
-    function drawTrackSignals() {
-      if (state.level === 0) return;
-      const color = state.level === 1 ? '#ff8a3d' : state.level === 2 ? '#5ee7ff' : '#ff4f35';
-      context.save(); context.strokeStyle = color; context.fillStyle = color; context.shadowColor = color; context.shadowBlur = 10;
-      for (let y = -90 + (state.roadOffset % 120); y < 760; y += 120) {
-        const direction = Math.sign(roadCenter(y + 30) - roadCenter(y - 30)) || 1;
-        const outside = direction > 0 ? 218 : -218; const x = roadCenter(y) + outside;
-        context.globalAlpha = .72; context.lineWidth = 4; context.beginPath();
-        context.moveTo(x - direction * 13, y - 11); context.lineTo(x + direction * 4, y); context.lineTo(x - direction * 13, y + 11); context.stroke();
-      }
-      if (state.level >= 2) {
-        const spacing = state.level === 2 ? 520 : 390;
-        for (let y = -spacing + (state.totalDistance % spacing); y < 760; y += spacing) {
-          context.globalAlpha = state.level === 2 ? .22 : .3; context.fillRect(roadCenter(y) - 205, y, 410, state.level === 2 ? 3 : 7);
-          if (state.level === 3) {
-            context.globalAlpha = .62;
-            for (let x = -150; x <= 150; x += 75) context.fillRect(roadCenter(y) + x - 24, y - 8, 48, 4);
-          }
-        }
-      }
-      context.restore();
-    }
-
     function updateHud() {
       const levelProgress = Math.min(100, Math.floor(state.levelDistance / levels[state.level].length * 100));
       const displaySpeed = Math.round(state.speed); const gear = Math.min(6, Math.max(1, Math.floor(displaySpeed / 85)));
@@ -421,41 +474,19 @@
     }
 
     function render() {
-      context.setTransform(scale, 0, 0, scale, (width - 1000 * scale) / 2, (height - 700 * scale) / 2);
-      drawCyberCity();
-      context.save(); traceRoadSurface(); context.clip();
-      if (roadImage.complete && roadImage.naturalWidth) {
-        const roadTextureOffset = state.totalDistance % 1500;
-        context.drawImage(roadImage, 0, roadTextureOffset - 1500, 1000, 1500);
-        context.drawImage(roadImage, 0, roadTextureOffset, 1000, 1500);
-      } else {
-        context.fillStyle = '#1b1d26'; context.fillRect(0, 0, 1000, 700);
-      }
-      context.fillStyle = '#11152255'; context.fillRect(0, 0, 1000, 700); context.restore();
-      context.shadowBlur = 0; context.strokeStyle = '#7d8794'; context.lineWidth = 6;
-      traceRoadEdge(-250); context.stroke();
-      traceRoadEdge(250); context.stroke();
-      context.strokeStyle = '#c3c8d0bb'; context.lineWidth = 4; context.setLineDash([48, 102]); context.lineDashOffset = -state.roadOffset;
-      for (const laneOffset of [-75, 75]) { traceRoadEdge(laneOffset); context.stroke(); }
-      context.setLineDash([]); context.shadowBlur = 0;
-      for (let y = -80 + state.roadOffset; y < 760; y += 150) {
-        context.fillStyle = '#d6a758'; context.fillRect(roadCenter(y) - 264, y, 5, 42);
-        context.fillRect(roadCenter(y) + 259, y, 5, 42);
-      }
-      drawTrackSignals();
-      drawEnergyTrail();
-      for (const obstacle of state.obstacles) drawCar(obstacle);
-      const blink = state.player.invulnerable > 0 && Math.floor(state.player.invulnerable * 10) % 2 === 0;
-      drawMotorcycle(state.player, blink ? 0.3 : 1);
-      context.fillStyle = '#ffd166'; for (const p of state.particles) { context.globalAlpha = Math.max(0, p.life * 2); context.fillRect(p.x - 5, p.y - 5, 10, 10); } context.globalAlpha = 1;
-      if (state.levelFlash > 0) {
-        context.fillStyle = '#050711bb'; context.beginPath(); context.roundRect(360, 300, 280, 82, 18); context.fill();
-        context.fillStyle = '#fff'; context.font = '700 16px system-ui'; context.textAlign = 'center'; context.fillText(`LEVEL ${state.level + 1}`, 500, 332);
-        context.fillStyle = '#ff7545'; context.font = '800 23px system-ui'; context.fillText(levels[state.level].name, 500, 358);
-        context.fillStyle = '#cbd2dc'; context.font = '600 12px system-ui'; context.fillText(levels[state.level].subtitle.toUpperCase(), 500, 376); context.textAlign = 'start';
-      }
+      const cameraFrame = courseFrameAt(currentCourseProgress());
+      const targetFrame = courseFrameAt(cameraFrame.progress + 18);
+      const lateral = playerCourseLateral() * 3.5;
+      const jumpOffset = (state.player.jumpHeight || 0) / 90 * 0.62;
+      const target = targetFrame.point.clone().addScaledVector(targetFrame.right, lateral);
+      threeCamera.position.copy(cameraFrame.point).addScaledVector(cameraFrame.right, lateral);
+      threeCamera.position.y += 2.35 + jumpOffset;
+      target.y += 0.45 + jumpOffset * 0.15;
+      threeCamera.up.set(0, 1, 0);
+      threeCamera.lookAt(target);
+      cockpit.rotation.z = -state.player.lean * 0.16;
+      threeRenderer.render(threeScene, threeCamera);
       updateHud();
-      context.setTransform(1, 0, 0, 1, 0, 0);
     }
 
     function loop(now) {
@@ -596,13 +627,19 @@
     });
     addEventListener('keyup', event => keys.delete(event.key));
 
-    window.render_game_to_text = () => JSON.stringify({
-      coordinateSystem: 'logical 1000x700; origin top-left; x right; y down', mode: state.mode,
-      player: { type: 'light-cycle', x: +state.player.x.toFixed(1), y: state.player.y, lean: +state.player.lean.toFixed(2), jumpHeight: +(state.player.jumpHeight || 0).toFixed(1), jumpCooldown: +state.player.jumpCooldown.toFixed(2), invulnerable: +state.player.invulnerable.toFixed(2), trailPoints: state.energyTrail.length },
-      level: { number: state.level + 1, name: levels[state.level].name, distance: Math.floor(state.levelDistance), target: levels[state.level].length, roadBlend: +state.levelBlend.toFixed(2) }, roadCenterAtPlayer: +roadCenter(state.player.y).toFixed(1), obstacles: state.obstacles.map(o => ({ type: trafficTypes[o.type].name, lane: o.laneIndex, x: +o.x.toFixed(1), y: +o.y.toFixed(1) })), score: Math.floor(state.score),
-      best: state.best, lives: state.lives, clears: state.clears, jumps: state.jumps, speed: Math.round(state.speed),
-      connected: cameraState === 'ready', input: cameraState === 'ready' ? 'camera' : 'keyboard', camera: { state: cameraState, roll: +cameraRoll.toFixed(2), pitch: +cameraPitch.toFixed(3), pitchDelta: +cameraPitchDelta.toFixed(3), tilt: +cameraTilt.toFixed(2), calibrationQuality: cameraPreview.dataset.quality, calibrationProgress: Math.min(100, Math.round(calibrationStableMs / 1200 * 100)) }, version: 'v1', renderer: 'canvas-2d', view: 'top-down', fullscreen: Boolean(document.fullscreenElement)
-    });
+    window.render_game_to_text = () => {
+      const course = courseProfileAt(currentCourseProgress());
+      const courseLateral = playerCourseLateral();
+      return JSON.stringify({
+        coordinateSystem: 'logical 1000x700; origin top-left; x right; y down', mode: state.mode,
+        version: 'v2', rendering: { renderer: 'three', camera: threeCamera.type },
+        course: { segment: course.segment, progress: +course.progress.toFixed(1), length: COURSE_LENGTH, elevation: +course.y.toFixed(2) },
+        player: { type: 'light-cycle', x: +state.player.x.toFixed(1), y: state.player.y, courseLateral: +courseLateral.toFixed(2), steering: +normalizedSteering.toFixed(2), lean: +state.player.lean.toFixed(2), cockpitLean: +(-state.player.lean * 0.16).toFixed(3), horizonRoll: 0, jumpHeight: +(state.player.jumpHeight || 0).toFixed(1), jumpCooldown: +state.player.jumpCooldown.toFixed(2), invulnerable: +state.player.invulnerable.toFixed(2), trailPoints: state.energyTrail.length },
+        level: { number: state.level + 1, name: levels[state.level].name, distance: Math.floor(state.levelDistance), target: levels[state.level].length, roadBlend: +state.levelBlend.toFixed(2) }, roadCenterAtPlayer: +roadCenter(state.player.y).toFixed(1), obstacles: state.obstacles.map(o => ({ type: trafficTypes[o.type].name, lane: o.laneIndex, x: +o.x.toFixed(1), y: +o.y.toFixed(1) })), score: Math.floor(state.score),
+        best: state.best, lives: state.lives, clears: state.clears, jumps: state.jumps, speed: Math.round(state.speed),
+        connected: cameraState === 'ready', input: cameraState === 'ready' ? 'camera' : 'keyboard', camera: { state: cameraState, roll: +cameraRoll.toFixed(2), pitch: +cameraPitch.toFixed(3), pitchDelta: +cameraPitchDelta.toFixed(3), tilt: +cameraTilt.toFixed(2), calibrationQuality: cameraPreview.dataset.quality, calibrationProgress: Math.min(100, Math.round(calibrationStableMs / 1200 * 100)) }, view: 'first-person', fullscreen: Boolean(document.fullscreenElement)
+      });
+    };
     window.advanceTime = ms => {
       testingMode = true;
       const steps = Math.max(1, Math.round(ms / (1000 / 60)));

@@ -1,8 +1,8 @@
-# Tilt Rush V1
+# Tilt Rush V2
 
-The frozen top-down edition of Tilt Rush, an open-source browser racing game controlled with head movement through a webcam. Lean to steer, flick upward to jump traffic, or use the keyboard fallback.
+The active first-person edition of Tilt Rush, an open-source browser racing game controlled with head movement through a webcam. Lean to steer, flick upward to jump traffic, or use the keyboard fallback.
 
-The annotated `v1.0.0` tag is the source of truth for this completed edition. Active development after that tag belongs to the separate first-person V2 line.
+The completed top-down V1 remains frozen at the annotated `v1.0.0` tag. Active `main` development is the separate first-person V2 line.
 
 ## Play
 
@@ -28,7 +28,7 @@ Then open <http://localhost:8000>.
 
 ## Architecture
 
-Tilt Rush V1 is a static top-down Canvas game: one HTML entry point plus raster assets. It has no backend, account system, analytics, or headphone integration. MediaPipe is loaded from jsDelivr and its face model from Google Storage when camera control is enabled.
+Tilt Rush V2 is a static Three.js first-person game: one HTML entry point, one WebGL canvas, and raster assets. It has no backend, account system, analytics, or headphone integration. Three.js and MediaPipe are loaded from jsDelivr; the face model is loaded from Google Storage when camera control is enabled.
 
 ## License
 

@@ -3,13 +3,12 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Tilt Rush</title>
+  <title>Tilt Rush V1 — Top Down</title>
   <style>
     :root { color-scheme: dark; font-family: ui-rounded, system-ui, sans-serif; }
     * { box-sizing: border-box; }
     body { margin: 0; overflow: hidden; background: #09051a; color: #fff; }
-    canvas { position: fixed; inset: 0; display: block; width: 100vw; height: 100vh; }
-    canvas[hidden] { display: none; }
+    canvas { display: block; width: 100vw; height: 100vh; }
     .camera-calibration { position: fixed; z-index: 5; inset: 0; display: grid; place-items: center; padding: 20px; background: #02050dcc; backdrop-filter: blur(10px); }
     .camera-calibration[hidden] { display: none; }
     .calibration-card { width: min(380px, calc(100vw - 40px)); padding: 20px; border: 1px solid #66ffb680; border-radius: 22px; background: #07130fee; box-shadow: 0 24px 80px #000b; text-align: center; }
@@ -63,13 +62,9 @@
     #hud-lives { color: #ff765c; letter-spacing: .08em; }
     @media (max-width: 760px) { .topbar { inset: 10px 10px auto; gap: 8px; } .race-hud { width: 58vw; } .speed-hud { width: 37vw; } #hud-speed { font-size: 38px; } .actions > button { display: none; } .input-switch button { padding-inline: 8px; } .race-heading { padding: 10px 12px 7px; } #hud-stage-name { font-size: 16px; } }
   </style>
-  <script type="importmap">
-    { "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.185.1/build/three.module.js" } }
-  </script>
 </head>
 <body>
-  <canvas id="three-game" aria-label="Tilt Rush first-person racing game"></canvas>
-  <canvas id="game" aria-label="Tilt Rush top-down racing game" hidden></canvas>
+  <canvas id="game" aria-label="Tilt Rush racing game"></canvas>
   <div class="camera-calibration" id="camera-calibration" hidden>
     <section class="calibration-card" role="dialog" aria-modal="true" aria-labelledby="calibration-title">
       <h2 id="calibration-title">Starting camera…</h2>
@@ -82,7 +77,7 @@
     <section class="panel race-hud" aria-label="Race objective and controls">
       <div class="race-heading"><div><span class="eyebrow" id="hud-stage-index">Night run · Stage 1/4</span><strong id="hud-stage-name">Ignition Mile</strong></div><span id="hud-stage-percent">0%</span></div>
       <div class="stage-track"><div id="stage-fill"></div></div>
-      <div class="control-deck"><span id="status">Camera off · keyboard ready</span><div class="actions"><button id="camera" type="button" aria-pressed="false">Enable camera</button><button id="view" type="button">Top down</button><button id="center" type="button" disabled>Recenter</button><button id="fullscreen" type="button">Full screen</button></div></div>
+      <div class="control-deck"><span id="status">Camera off · keyboard ready</span><div class="actions"><button id="camera" type="button" aria-pressed="false">Enable camera</button><button id="center" type="button" disabled>Recenter</button><button id="fullscreen" type="button">Full screen</button></div></div>
     </section>
     <section class="panel speed-hud" id="telemetry" aria-label="Speed and race stats">
       <div class="speed-top"><span id="hud-speed">260</span><span class="speed-meta">KM/H<br><b id="hud-gear">3</b> GEAR</span></div>
@@ -92,16 +87,13 @@
   </div>
   <div class="menu" id="menu">
     <div class="card">
-      <h1>Tilt Rush</h1>
+      <h1>Tilt Rush V1</h1>
       <p id="message">Tilt your head to carve. Flick up to jump traffic.<br>Camera video stays on this device and is never uploaded.</p>
-      <p><kbd>←</kbd> <kbd>→</kbd> steer · <kbd>Space</kbd> jump · <kbd>V</kbd> camera · <kbd>F</kbd> fullscreen</p>
+      <p>Top-down edition · <kbd>←</kbd> <kbd>→</kbd> steer · <kbd>Space</kbd> jump · <kbd>F</kbd> fullscreen</p>
       <button id="start" type="button">Start run</button>
     </div>
   </div>
-  <script type="module">
-    import * as THREE from 'three';
-
-    const threeCanvas = document.querySelector('#three-game');
+  <script>
     const canvas = document.querySelector('#game');
     const context = canvas.getContext('2d');
     const status = document.querySelector('#status');
@@ -125,7 +117,6 @@
     const hudBest = document.querySelector('#hud-best');
     const hudLives = document.querySelector('#hud-lives');
     const centerButton = document.querySelector('#center');
-    const viewButton = document.querySelector('#view');
     const fullscreenButton = document.querySelector('#fullscreen');
     const menu = document.querySelector('#menu');
     const message = document.querySelector('#message');
@@ -169,159 +160,10 @@
     let cameraPitchDelta = 0;
     let previousCameraPitch = 0;
     let testingMode = false;
-    let viewMode = 'first-person';
     let lastFrame = performance.now();
-    let normalizedSteering = 0;
-
-    const threeRenderer = new THREE.WebGLRenderer({ canvas: threeCanvas, antialias: true });
-    threeRenderer.setPixelRatio(Math.min(devicePixelRatio, 2));
-    threeRenderer.outputColorSpace = THREE.SRGBColorSpace;
-    const threeScene = new THREE.Scene();
-    threeScene.background = new THREE.Color(0x070b14);
-    threeScene.fog = new THREE.Fog(0x070b14, 24, 105);
-    const threeCamera = new THREE.PerspectiveCamera(66, innerWidth / innerHeight, 0.1, 140);
-    threeCamera.position.set(0, 2.35, 8);
-    threeCamera.lookAt(0, 0.45, -34);
-
-    const hemisphereLight = new THREE.HemisphereLight(0x8fc8ff, 0x24120c, 2.2);
-    threeScene.add(hemisphereLight);
-
-    const COURSE_LENGTH = 370;
-    const COURSE_GEOMETRY_LENGTH = 430;
-    const COURSE_DISTANCE_SCALE = levels.reduce((total, level) => total + level.length, 0) / COURSE_LENGTH;
-
-    function smoothstep01(value) {
-      const t = Math.max(0, Math.min(1, value));
-      return t * t * (3 - 2 * t);
-    }
-
-    function courseProfileAt(distance) {
-      const progress = Math.max(0, Math.min(COURSE_GEOMETRY_LENGTH, distance));
-      const curve = smoothstep01((progress - 55) / 130);
-      let elevation = 0;
-      if (progress >= 140 && progress < 250) elevation = 12 * smoothstep01((progress - 140) / 110);
-      else if (progress < 285 && progress >= 250) elevation = 12;
-      else if (progress >= 285) elevation = 12 - 11 * smoothstep01((progress - 285) / 85);
-
-      let segment = 'straight';
-      if (progress >= 55 && progress < 170) segment = 'curve';
-      else if (progress >= 170 && progress < 250) segment = 'climb';
-      else if (progress >= 250 && progress < 285) segment = 'crest';
-      else if (progress >= 285) segment = 'descent';
-
-      return { progress, x: curve * 15, y: elevation, z: -progress, segment };
-    }
-
-    function courseFrameAt(distance) {
-      const profile = courseProfileAt(distance);
-      const behind = courseProfileAt(Math.max(0, profile.progress - 0.5));
-      const ahead = courseProfileAt(Math.min(COURSE_GEOMETRY_LENGTH, profile.progress + 0.5));
-      const point = new THREE.Vector3(profile.x, profile.y, profile.z);
-      const tangent = new THREE.Vector3(ahead.x - behind.x, ahead.y - behind.y, ahead.z - behind.z).normalize();
-      const right = new THREE.Vector3(-tangent.z, 0, tangent.x).normalize();
-      return { ...profile, point, tangent, right };
-    }
-
-    function currentCourseProgress() {
-      return Math.min(COURSE_LENGTH, state.totalDistance / COURSE_DISTANCE_SCALE);
-    }
-
-    function createRoadGeometry() {
-      const positions = [];
-      const indices = [];
-      const step = 2;
-      for (let distance = 0; distance <= COURSE_GEOMETRY_LENGTH; distance += step) {
-        const frame = courseFrameAt(distance);
-        const left = frame.point.clone().addScaledVector(frame.right, -5);
-        const right = frame.point.clone().addScaledVector(frame.right, 5);
-        positions.push(left.x, left.y, left.z, right.x, right.y, right.z);
-      }
-      const rowCount = COURSE_GEOMETRY_LENGTH / step + 1;
-      for (let row = 0; row < rowCount - 1; row++) {
-        const left = row * 2;
-        const right = left + 1;
-        const nextLeft = left + 2;
-        const nextRight = left + 3;
-        indices.push(left, right, nextLeft, right, nextRight, nextLeft);
-      }
-      const geometry = new THREE.BufferGeometry();
-      geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-      geometry.setIndex(indices);
-      geometry.computeVertexNormals();
-      return geometry;
-    }
-
-    const road = new THREE.Mesh(
-      createRoadGeometry(),
-      new THREE.MeshStandardMaterial({ color: 0x292d36, roughness: 0.92 })
-    );
-    threeScene.add(road);
-
-    const boundaryMaterial = new THREE.MeshStandardMaterial({ color: 0xff7048, emissive: 0x5c1608, emissiveIntensity: 1.1 });
-    for (const side of [-1, 1]) {
-      const points = [];
-      for (let distance = 0; distance <= COURSE_GEOMETRY_LENGTH; distance += 2) {
-        const frame = courseFrameAt(distance);
-        const point = frame.point.clone().addScaledVector(frame.right, side * 5.05);
-        point.y += 0.1;
-        points.push(point);
-      }
-      const boundaryCurve = new THREE.CatmullRomCurve3(points, false, 'centripetal');
-      const boundary = new THREE.Mesh(new THREE.TubeGeometry(boundaryCurve, 240, 0.09, 6, false), boundaryMaterial);
-      threeScene.add(boundary);
-    }
-
-    const markerGeometry = new THREE.BoxGeometry(0.09, 0.035, 2.7);
-    const markerMaterial = new THREE.MeshStandardMaterial({ color: 0xe9edf4, emissive: 0x35383d, emissiveIntensity: 0.5 });
-    const markerForward = new THREE.Vector3(0, 0, 1);
-    for (let distance = 5; distance < COURSE_GEOMETRY_LENGTH; distance += 7) {
-      const frame = courseFrameAt(distance);
-      for (const lane of [-1.65, 1.65]) {
-        const marker = new THREE.Mesh(markerGeometry, markerMaterial);
-        marker.position.copy(frame.point).addScaledVector(frame.right, lane);
-        marker.position.y += 0.035;
-        marker.quaternion.setFromUnitVectors(markerForward, frame.tangent);
-        threeScene.add(marker);
-      }
-    }
-
-    const roadsideGeometry = new THREE.BoxGeometry(0.14, 1.25, 0.14);
-    const roadsideMaterial = new THREE.MeshStandardMaterial({ color: 0xffb35a, emissive: 0x6b2b08, emissiveIntensity: 1.2 });
-    for (let distance = 10; distance < COURSE_GEOMETRY_LENGTH; distance += 14) {
-      const frame = courseFrameAt(distance);
-      for (const side of [-1, 1]) {
-        const roadsideMarker = new THREE.Mesh(roadsideGeometry, roadsideMaterial);
-        roadsideMarker.position.copy(frame.point).addScaledVector(frame.right, side * 5.55);
-        roadsideMarker.position.y += 0.62;
-        threeScene.add(roadsideMarker);
-      }
-    }
-
-    threeScene.add(threeCamera);
-    const cockpit = new THREE.Group();
-    threeCamera.add(cockpit);
-    const cockpitMaterial = new THREE.MeshStandardMaterial({ color: 0x252b35, roughness: 0.72, metalness: 0.28 });
-    const cockpitAccentMaterial = new THREE.MeshStandardMaterial({ color: 0xff5c35, emissive: 0x711a08, emissiveIntensity: 1.4 });
-    const fairing = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.38, 0.95), cockpitMaterial);
-    fairing.position.set(0, -1.05, -1.72);
-    fairing.rotation.x = -0.12;
-    cockpit.add(fairing);
-    const handlebar = new THREE.Mesh(new THREE.BoxGeometry(1.65, 0.08, 0.08), cockpitMaterial);
-    handlebar.position.set(0, -0.78, -1.48);
-    cockpit.add(handlebar);
-    const dash = new THREE.Mesh(new THREE.BoxGeometry(0.48, 0.2, 0.12), cockpitAccentMaterial);
-    dash.position.set(0, -0.79, -1.34);
-    cockpit.add(dash);
-    const windshield = new THREE.Mesh(
-      new THREE.PlaneGeometry(1.16, 0.46),
-      new THREE.MeshStandardMaterial({ color: 0x8fdcff, transparent: true, opacity: 0.2, side: THREE.DoubleSide })
-    );
-    windshield.position.set(0, -0.56, -1.63);
-    windshield.rotation.x = -0.2;
-    cockpit.add(windshield);
 
     const state = {
-      mode: 'ready', score: 0, best: Number(localStorage.getItem('tilt-rush-best') || 0), lives: 3, clears: 0, jumps: 0,
+      mode: 'ready', score: 0, best: Number(localStorage.getItem('tilt-rush-v1-best') || 0), lives: 3, clears: 0, jumps: 0,
       elapsed: 0, speed: 260, spawnTimer: 1.1, spawnIndex: 0, roadOffset: 0, level: 0, previousLevel: 0, levelBlend: 1, levelDistance: 0, totalDistance: 0, levelFlash: 0,
       player: { x: 500, y: 590, width: 30, height: 104, lean: 0, jumpRemaining: 0, jumpCooldown: 0, invulnerable: 0, jumpPulse: 0 }, obstacles: [], particles: [], energyTrail: [], trailTimer: 0
     };
@@ -330,10 +172,6 @@
       width = canvas.width = innerWidth * devicePixelRatio;
       height = canvas.height = innerHeight * devicePixelRatio;
       scale = Math.min(width / 1000, height / 700);
-      threeRenderer.setPixelRatio(Math.min(devicePixelRatio, 2));
-      threeRenderer.setSize(innerWidth, innerHeight, false);
-      threeCamera.aspect = innerWidth / innerHeight;
-      threeCamera.updateProjectionMatrix();
     }
     addEventListener('resize', resize);
     resize();
@@ -341,7 +179,6 @@
     function resetGame() {
       Object.assign(state, { mode: 'playing', score: 0, lives: 3, clears: 0, jumps: 0, elapsed: 0, speed: 260, spawnTimer: 1.1, spawnIndex: 0, roadOffset: 0, level: 0, previousLevel: 0, levelBlend: 1, levelDistance: 0, totalDistance: 0, levelFlash: 2.2, obstacles: [], particles: [], energyTrail: [], trailTimer: 0 });
       Object.assign(state.player, { x: 500, y: 590, lean: 0, jumpRemaining: 0, jumpHeight: 0, jumpCooldown: 0, invulnerable: 0, jumpPulse: 0 });
-      normalizedSteering = 0;
       menu.hidden = true;
       render();
     }
@@ -349,7 +186,7 @@
     function finishGame() {
       state.mode = 'gameover';
       state.best = Math.max(state.best, Math.floor(state.score));
-      localStorage.setItem('tilt-rush-best', state.best);
+      localStorage.setItem('tilt-rush-v1-best', state.best);
       message.innerHTML = `Run over — <strong>${Math.floor(state.score)}</strong> points.<br>Best score: ${state.best}`;
       startButton.textContent = 'Race again';
       menu.hidden = false;
@@ -358,7 +195,7 @@
     function completeCourse() {
       state.mode = 'complete';
       state.best = Math.max(state.best, Math.floor(state.score));
-      localStorage.setItem('tilt-rush-best', state.best);
+      localStorage.setItem('tilt-rush-v1-best', state.best);
       message.innerHTML = `Course complete — <strong>${Math.floor(state.score)}</strong> points.<br>Best score: ${state.best}`;
       startButton.textContent = 'Race again';
       menu.hidden = false;
@@ -388,10 +225,6 @@
       const current = levelRoadCenter(state.level, y);
       const blend = state.levelBlend * state.levelBlend * (3 - 2 * state.levelBlend);
       return previous + (current - previous) * blend;
-    }
-
-    function playerCourseLateral() {
-      return Math.max(-1, Math.min(1, (state.player.x - roadCenter(state.player.y)) / 210));
     }
 
     function overlaps(a, b) {
@@ -446,10 +279,10 @@
       }
 
       const keyboard = (keys.has('ArrowRight') ? 1 : 0) - (keys.has('ArrowLeft') ? 1 : 0);
-      normalizedSteering = keyboard || (cameraState === 'ready' ? cameraTilt : 0);
+      const steering = keyboard || (cameraState === 'ready' ? cameraTilt : 0);
       const playerRoadCenter = roadCenter(state.player.y);
-      state.player.x = Math.max(playerRoadCenter - 210, Math.min(playerRoadCenter + 210, state.player.x + normalizedSteering * 330 * dt));
-      state.player.lean += (normalizedSteering - state.player.lean) * Math.min(1, dt * 8);
+      state.player.x = Math.max(playerRoadCenter - 210, Math.min(playerRoadCenter + 210, state.player.x + steering * 330 * dt));
+      state.player.lean += (steering - state.player.lean) * Math.min(1, dt * 8);
       state.player.invulnerable = Math.max(0, state.player.invulnerable - dt);
       state.player.jumpRemaining = Math.max(0, state.player.jumpRemaining - dt);
       state.player.jumpCooldown = Math.max(0, state.player.jumpCooldown - dt);
@@ -588,25 +421,6 @@
     }
 
     function render() {
-      const firstPerson = viewMode === 'first-person';
-      threeCanvas.hidden = !firstPerson;
-      canvas.hidden = firstPerson;
-      if (firstPerson) {
-        const cameraFrame = courseFrameAt(currentCourseProgress());
-        const targetFrame = courseFrameAt(cameraFrame.progress + 18);
-        const lateral = playerCourseLateral() * 3.5;
-        const jumpOffset = (state.player.jumpHeight || 0) / 90 * 0.62;
-        const target = targetFrame.point.clone().addScaledVector(targetFrame.right, lateral);
-        threeCamera.position.copy(cameraFrame.point).addScaledVector(cameraFrame.right, lateral);
-        threeCamera.position.y += 2.35 + jumpOffset;
-        target.y += 0.45 + jumpOffset * 0.15;
-        threeCamera.up.set(0, 1, 0);
-        threeCamera.lookAt(target);
-        cockpit.rotation.z = -state.player.lean * 0.16;
-        threeRenderer.render(threeScene, threeCamera);
-        updateHud();
-        return;
-      }
       context.setTransform(scale, 0, 0, scale, (width - 1000 * scale) / 2, (height - 700 * scale) / 2);
       drawCyberCity();
       context.save(); traceRoadSurface(); context.clip();
@@ -773,30 +587,22 @@
       if (cameraState === 'ready') beginCameraCalibration('Recenter head controls');
     });
     startButton.addEventListener('click', resetGame);
-    viewButton.addEventListener('click', () => { viewMode = viewMode === 'first-person' ? 'top-down' : 'first-person'; viewButton.textContent = viewMode === 'first-person' ? 'Top down' : 'First person'; render(); });
     fullscreenButton.addEventListener('click', () => document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen());
     addEventListener('keydown', event => {
       keys.add(event.key);
       if (event.key === 'Enter' && state.mode !== 'playing') resetGame();
       if (event.code === 'Space') { event.preventDefault(); jump(); }
-      if (event.key.toLowerCase() === 'v') viewButton.click();
       if (event.key.toLowerCase() === 'f') fullscreenButton.click();
     });
     addEventListener('keyup', event => keys.delete(event.key));
 
-    window.render_game_to_text = () => {
-      const course = courseProfileAt(currentCourseProgress());
-      const courseLateral = playerCourseLateral();
-      return JSON.stringify({
-        coordinateSystem: 'logical 1000x700; origin top-left; x right; y down', mode: state.mode,
-        rendering: { renderer: viewMode === 'first-person' ? 'three' : 'canvas-2d', camera: viewMode === 'first-person' ? threeCamera.type : 'top-down' },
-        course: { segment: course.segment, progress: +course.progress.toFixed(1), length: COURSE_LENGTH, elevation: +course.y.toFixed(2) },
-        player: { type: 'light-cycle', x: +state.player.x.toFixed(1), y: state.player.y, courseLateral: +courseLateral.toFixed(2), steering: +normalizedSteering.toFixed(2), lean: +state.player.lean.toFixed(2), cockpitLean: +(-state.player.lean * 0.16).toFixed(3), horizonRoll: 0, jumpHeight: +(state.player.jumpHeight || 0).toFixed(1), jumpCooldown: +state.player.jumpCooldown.toFixed(2), invulnerable: +state.player.invulnerable.toFixed(2), trailPoints: state.energyTrail.length },
-        level: { number: state.level + 1, name: levels[state.level].name, distance: Math.floor(state.levelDistance), target: levels[state.level].length, roadBlend: +state.levelBlend.toFixed(2) }, roadCenterAtPlayer: +roadCenter(state.player.y).toFixed(1), obstacles: state.obstacles.map(o => ({ type: trafficTypes[o.type].name, lane: o.laneIndex, x: +o.x.toFixed(1), y: +o.y.toFixed(1) })), score: Math.floor(state.score),
-        best: state.best, lives: state.lives, clears: state.clears, jumps: state.jumps, speed: Math.round(state.speed),
-        connected: cameraState === 'ready', input: cameraState === 'ready' ? 'camera' : 'keyboard', camera: { state: cameraState, roll: +cameraRoll.toFixed(2), pitch: +cameraPitch.toFixed(3), pitchDelta: +cameraPitchDelta.toFixed(3), tilt: +cameraTilt.toFixed(2), calibrationQuality: cameraPreview.dataset.quality, calibrationProgress: Math.min(100, Math.round(calibrationStableMs / 1200 * 100)) }, view: viewMode, fullscreen: Boolean(document.fullscreenElement)
-      });
-    };
+    window.render_game_to_text = () => JSON.stringify({
+      coordinateSystem: 'logical 1000x700; origin top-left; x right; y down', mode: state.mode,
+      player: { type: 'light-cycle', x: +state.player.x.toFixed(1), y: state.player.y, lean: +state.player.lean.toFixed(2), jumpHeight: +(state.player.jumpHeight || 0).toFixed(1), jumpCooldown: +state.player.jumpCooldown.toFixed(2), invulnerable: +state.player.invulnerable.toFixed(2), trailPoints: state.energyTrail.length },
+      level: { number: state.level + 1, name: levels[state.level].name, distance: Math.floor(state.levelDistance), target: levels[state.level].length, roadBlend: +state.levelBlend.toFixed(2) }, roadCenterAtPlayer: +roadCenter(state.player.y).toFixed(1), obstacles: state.obstacles.map(o => ({ type: trafficTypes[o.type].name, lane: o.laneIndex, x: +o.x.toFixed(1), y: +o.y.toFixed(1) })), score: Math.floor(state.score),
+      best: state.best, lives: state.lives, clears: state.clears, jumps: state.jumps, speed: Math.round(state.speed),
+      connected: cameraState === 'ready', input: cameraState === 'ready' ? 'camera' : 'keyboard', camera: { state: cameraState, roll: +cameraRoll.toFixed(2), pitch: +cameraPitch.toFixed(3), pitchDelta: +cameraPitchDelta.toFixed(3), tilt: +cameraTilt.toFixed(2), calibrationQuality: cameraPreview.dataset.quality, calibrationProgress: Math.min(100, Math.round(calibrationStableMs / 1200 * 100)) }, version: 'v1', renderer: 'canvas-2d', view: 'top-down', fullscreen: Boolean(document.fullscreenElement)
+    });
     window.advanceTime = ms => {
       testingMode = true;
       const steps = Math.max(1, Math.round(ms / (1000 / 60)));

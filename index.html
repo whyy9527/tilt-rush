@@ -401,26 +401,82 @@
 
     threeScene.add(threeCamera);
     const cockpit = new THREE.Group();
+    cockpit.name = 'light-cycle-cockpit';
     threeCamera.add(cockpit);
-    const cockpitMaterial = new THREE.MeshStandardMaterial({ color: 0x252b35, roughness: 0.72, metalness: 0.28 });
-    const cockpitAccentMaterial = new THREE.MeshStandardMaterial({ color: 0xff5c35, emissive: 0x711a08, emissiveIntensity: 1.4 });
-    const fairing = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.38, 0.95), cockpitMaterial);
-    fairing.position.set(0, -1.05, -1.72);
-    fairing.rotation.x = -0.12;
+    const cockpitShellMaterial = new THREE.MeshStandardMaterial({ color: 0x111b2a, roughness: 0.34, metalness: 0.72 });
+    const cockpitPanelMaterial = new THREE.MeshStandardMaterial({ color: 0x324b68, emissive: 0x07111d, emissiveIntensity: 0.65, roughness: 0.5, metalness: 0.5 });
+    const cockpitAccentMaterial = new THREE.MeshStandardMaterial({ color: 0xff5c35, emissive: 0x9a250c, emissiveIntensity: 2.2, roughness: 0.3, metalness: 0.42 });
+    const cockpitScreenMaterial = new THREE.MeshStandardMaterial({ color: 0xffc1a3, emissive: 0xff4a20, emissiveIntensity: 3.4, roughness: 0.2 });
+    const cockpitBoxGeometry = new THREE.BoxGeometry(1, 1, 1);
+
+    const fairing = new THREE.Mesh(new THREE.ConeGeometry(0.74, 1.58, 5, 1, false, Math.PI / 2), cockpitShellMaterial);
+    fairing.position.set(0, -1.16, -1.5);
+    fairing.rotation.x = -Math.PI / 2;
     cockpit.add(fairing);
-    const handlebar = new THREE.Mesh(new THREE.BoxGeometry(1.65, 0.08, 0.08), cockpitMaterial);
-    handlebar.position.set(0, -0.78, -1.48);
+
+    for (const side of [-1, 1]) {
+      const sideFairing = new THREE.Mesh(cockpitBoxGeometry, cockpitPanelMaterial);
+      sideFairing.position.set(side * 0.58, -1.05, -1.46);
+      sideFairing.scale.set(0.3, 0.23, 1.08);
+      sideFairing.rotation.set(-0.08, side * 0.09, side * -0.05);
+      cockpit.add(sideFairing);
+
+      const accentBlade = new THREE.Mesh(cockpitBoxGeometry, cockpitAccentMaterial);
+      accentBlade.position.set(side * 0.43, -0.91, -1.56);
+      accentBlade.scale.set(0.055, 0.055, 0.9);
+      accentBlade.rotation.y = side * 0.08;
+      cockpit.add(accentBlade);
+
+      const steeringStem = new THREE.Mesh(cockpitBoxGeometry, cockpitShellMaterial);
+      steeringStem.position.set(side * 0.46, -0.86, -1.31);
+      steeringStem.scale.set(0.08, 0.34, 0.08);
+      steeringStem.rotation.z = side * -0.38;
+      cockpit.add(steeringStem);
+    }
+
+    const handlebar = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.045, 1.58, 10), cockpitShellMaterial);
+    handlebar.position.set(0, -0.74, -1.28);
+    handlebar.rotation.z = Math.PI / 2;
     cockpit.add(handlebar);
-    const dash = new THREE.Mesh(new THREE.BoxGeometry(0.48, 0.2, 0.12), cockpitAccentMaterial);
-    dash.position.set(0, -0.79, -1.34);
-    cockpit.add(dash);
+
+    const gripGeometry = new THREE.CylinderGeometry(0.065, 0.065, 0.28, 12);
+    for (const side of [-1, 1]) {
+      const grip = new THREE.Mesh(gripGeometry, cockpitAccentMaterial);
+      grip.position.set(side * 0.77, -0.74, -1.28);
+      grip.rotation.z = Math.PI / 2;
+      cockpit.add(grip);
+    }
+
+    const instrumentHousing = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.16, 0.12, 6), cockpitPanelMaterial);
+    instrumentHousing.position.set(0, -0.48, -0.98);
+    instrumentHousing.rotation.x = Math.PI / 2;
+    cockpit.add(instrumentHousing);
+    const instrumentScreen = new THREE.Mesh(new THREE.PlaneGeometry(0.16, 0.06), cockpitScreenMaterial);
+    instrumentScreen.position.set(0, -0.48, -0.865);
+    cockpit.add(instrumentScreen);
+
+    const windshieldAssembly = new THREE.Group();
+    windshieldAssembly.name = 'framed-windshield';
+    windshieldAssembly.position.set(0, -0.49, -1.62);
+    windshieldAssembly.rotation.x = -0.18;
     const windshield = new THREE.Mesh(
-      new THREE.PlaneGeometry(1.16, 0.46),
-      new THREE.MeshStandardMaterial({ color: 0x8fdcff, transparent: true, opacity: 0.2, side: THREE.DoubleSide })
+      new THREE.PlaneGeometry(1.12, 0.46),
+      new THREE.MeshStandardMaterial({ color: 0x8fdcff, transparent: true, opacity: 0.17, side: THREE.DoubleSide, depthWrite: false, roughness: 0.18, metalness: 0.18 })
     );
-    windshield.position.set(0, -0.56, -1.63);
-    windshield.rotation.x = -0.2;
-    cockpit.add(windshield);
+    windshieldAssembly.add(windshield);
+    for (const [x, y, width, height, rotation] of [
+      [0, -0.24, 1.16, 0.055, 0],
+      [0, 0.24, 0.99, 0.045, 0],
+      [-0.53, 0, 0.05, 0.5, -0.12],
+      [0.53, 0, 0.05, 0.5, 0.12]
+    ]) {
+      const frame = new THREE.Mesh(cockpitBoxGeometry, cockpitPanelMaterial);
+      frame.position.set(x, y, 0.018);
+      frame.scale.set(width, height, 0.045);
+      frame.rotation.z = rotation;
+      windshieldAssembly.add(frame);
+    }
+    cockpit.add(windshieldAssembly);
 
     const trafficRoot = new THREE.Group();
     trafficRoot.name = 'traffic';

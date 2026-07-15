@@ -22,6 +22,7 @@
     .face-guide::before { left: 24%; } .face-guide::after { right: 24%; }
     .calibration-progress { height: 6px; margin-top: 14px; overflow: hidden; border-radius: 999px; background: #ffffff1b; }
     #calibration-fill { width: 0; height: 100%; border-radius: inherit; background: #55f59c; box-shadow: 0 0 12px #55f59c; transition: width 80ms linear; }
+    #camera-cancel { width: 100%; margin-top: 14px; }
     .topbar { position: fixed; z-index: 2; inset: 20px 20px auto; display: flex; justify-content: space-between; align-items: flex-start; gap: 24px; pointer-events: none; }
     .panel { border: 1px solid #ff7a3a55; border-radius: 7px 20px 7px 20px; background: linear-gradient(135deg, #07111ef2, #131019e8); box-shadow: 0 8px 30px #0008, inset 3px 0 #ff542e; backdrop-filter: blur(12px); }
     .race-hud { width: min(430px, 45vw); overflow: hidden; }
@@ -74,6 +75,7 @@
       <p id="calibration-copy">Keep your face inside the green guide.</p>
       <div class="camera-preview" id="camera-preview" data-quality="align"><video id="camera-feed" playsinline muted></video><div class="face-guide" aria-hidden="true"></div></div>
       <div class="calibration-progress" id="calibration-progress" role="progressbar" aria-label="Stable calibration samples" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><div id="calibration-fill"></div></div>
+      <button id="camera-cancel" type="button">Use keyboard instead</button>
     </section>
   </div>
   <div class="topbar">
@@ -109,6 +111,7 @@
     const calibrationFill = document.querySelector('#calibration-fill');
     const calibrationProgress = document.querySelector('#calibration-progress');
     const cameraPreview = document.querySelector('#camera-preview');
+    const cameraCancelButton = document.querySelector('#camera-cancel');
     const telemetry = document.querySelector('#telemetry');
     const hudStageIndex = document.querySelector('#hud-stage-index');
     const hudStageName = document.querySelector('#hud-stage-name');
@@ -132,10 +135,10 @@
       { name: 'Skyway Hooks', subtitle: 'Commit, jump, recover', length: 5400, curve: 'hooks', interval: .84, pattern: [[0, 2], [1], [0, 1], [2], [1, 2], [0], [0, 2], [1]] }
     ];
     const trafficTypes = [
-      { name: 'Model 3', src: 'assets/traffic/model-3.png', width: 54, height: 112 },
-      { name: 'Model Y', src: 'assets/traffic/model-y.png', width: 58, height: 112 },
-      { name: 'Cybercab', src: 'assets/traffic/cybercab.png', width: 54, height: 116 },
-      { name: 'Cybertruck', src: 'assets/traffic/cybertruck.png', width: 58, height: 126 }
+      { name: 'Model 3', src: 'assets/traffic/model-3.png', width: 54, height: 112, color: 0x2553a6, worldWidth: 1.7, worldHeight: 0.62, worldLength: 3.8 },
+      { name: 'Model Y', src: 'assets/traffic/model-y.png', width: 58, height: 112, color: 0xe3e7ed, worldWidth: 1.82, worldHeight: 0.78, worldLength: 4.05 },
+      { name: 'Cybercab', src: 'assets/traffic/cybercab.png', width: 54, height: 116, color: 0xe5a832, worldWidth: 1.78, worldHeight: 0.66, worldLength: 3.9 },
+      { name: 'Cybertruck', src: 'assets/traffic/cybertruck.png', width: 58, height: 126, color: 0x9ca3ad, worldWidth: 1.9, worldHeight: 0.82, worldLength: 4.5 }
     ];
     const keys = new Set();
     let cameraRequestId = 0;
@@ -304,6 +307,79 @@
     windshield.rotation.x = -0.2;
     cockpit.add(windshield);
 
+    const trafficRoot = new THREE.Group();
+    trafficRoot.name = 'traffic';
+    threeScene.add(trafficRoot);
+    const trafficMeshes = new Map();
+    const trafficBodyGeometry = new THREE.BoxGeometry(1, 1, 1);
+    const trafficCabinGeometry = new THREE.BoxGeometry(1, 1, 1);
+    const trafficWheelGeometry = new THREE.CylinderGeometry(0.3, 0.3, 0.2, 12);
+    const trafficLightGeometry = new THREE.BoxGeometry(0.34, 0.13, 0.07);
+    const trafficBodyMaterials = trafficTypes.map(type => new THREE.MeshStandardMaterial({ color: type.color, roughness: 0.48, metalness: 0.38 }));
+    const trafficCabinMaterial = new THREE.MeshStandardMaterial({ color: 0x101826, roughness: 0.24, metalness: 0.52 });
+    const trafficWheelMaterial = new THREE.MeshStandardMaterial({ color: 0x090b0f, roughness: 0.92 });
+    const trafficTailMaterial = new THREE.MeshStandardMaterial({ color: 0xff3028, emissive: 0xff1d16, emissiveIntensity: 3.2 });
+    const trafficForward = new THREE.Vector3(0, 0, -1);
+    const TRAFFIC_WORLD_DISTANCE_PER_LOGICAL = 0.1;
+
+    function createTrafficMesh(typeIndex) {
+      const type = trafficTypes[typeIndex];
+      const vehicle = new THREE.Group();
+      vehicle.name = `traffic-${type.name.toLowerCase().replaceAll(' ', '-')}`;
+
+      const body = new THREE.Mesh(trafficBodyGeometry, trafficBodyMaterials[typeIndex]);
+      body.scale.set(type.worldWidth, type.worldHeight, type.worldLength);
+      body.position.y = 0.34 + type.worldHeight / 2;
+      vehicle.add(body);
+
+      const cabin = new THREE.Mesh(trafficCabinGeometry, trafficCabinMaterial);
+      cabin.scale.set(type.worldWidth * 0.76, type.worldHeight * 0.72, type.worldLength * 0.46);
+      cabin.position.set(0, 0.34 + type.worldHeight * 1.22, -type.worldLength * 0.08);
+      vehicle.add(cabin);
+
+      for (const side of [-1, 1]) {
+        for (const end of [-1, 1]) {
+          const wheel = new THREE.Mesh(trafficWheelGeometry, trafficWheelMaterial);
+          wheel.rotation.z = Math.PI / 2;
+          wheel.position.set(side * type.worldWidth * 0.52, 0.31, end * type.worldLength * 0.31);
+          vehicle.add(wheel);
+        }
+        const tailLight = new THREE.Mesh(trafficLightGeometry, trafficTailMaterial);
+        tailLight.position.set(side * type.worldWidth * 0.28, 0.48 + type.worldHeight * 0.55, type.worldLength / 2 + 0.04);
+        vehicle.add(tailLight);
+      }
+      return vehicle;
+    }
+
+    function obstacleDistanceAhead(obstacle) {
+      return (state.player.y - obstacle.y) * TRAFFIC_WORLD_DISTANCE_PER_LOGICAL;
+    }
+
+    function removeTrafficMesh(obstacle) {
+      const mesh = trafficMeshes.get(obstacle);
+      if (!mesh) return;
+      trafficRoot.remove(mesh);
+      trafficMeshes.delete(obstacle);
+    }
+
+    function syncTrafficMeshes() {
+      const riderProgress = currentCourseProgress();
+      for (const obstacle of state.obstacles) {
+        let mesh = trafficMeshes.get(obstacle);
+        if (!mesh) {
+          mesh = createTrafficMesh(obstacle.type);
+          trafficMeshes.set(obstacle, mesh);
+          trafficRoot.add(mesh);
+        }
+        const distanceAhead = obstacleDistanceAhead(obstacle);
+        mesh.visible = distanceAhead > 2 && distanceAhead <= 76;
+        if (!mesh.visible) continue;
+        const frame = courseFrameAt(riderProgress + distanceAhead);
+        mesh.position.copy(frame.point).addScaledVector(frame.right, (obstacle.laneIndex - 1) * 3.2);
+        mesh.quaternion.setFromUnitVectors(trafficForward, frame.tangent);
+      }
+    }
+
     const state = {
       mode: 'ready', score: 0, best: Number(localStorage.getItem('tilt-rush-v2-best') || 0), lives: 3, clears: 0, jumps: 0,
       elapsed: 0, speed: 260, spawnTimer: 1.1, spawnIndex: 0, roadOffset: 0, level: 0, previousLevel: 0, levelBlend: 1, levelDistance: 0, totalDistance: 0, levelFlash: 0,
@@ -320,6 +396,7 @@
     resize();
 
     function resetGame() {
+      for (const obstacle of state.obstacles) removeTrafficMesh(obstacle);
       Object.assign(state, { mode: 'playing', score: 0, lives: 3, clears: 0, jumps: 0, elapsed: 0, speed: 260, spawnTimer: 1.1, spawnIndex: 0, roadOffset: 0, level: 0, previousLevel: 0, levelBlend: 1, levelDistance: 0, totalDistance: 0, levelFlash: 2.2, obstacles: [], particles: [], energyTrail: [], trailTimer: 0 });
       Object.assign(state.player, { x: 500, y: 590, lean: 0, jumpRemaining: 0, jumpHeight: 0, jumpCooldown: 0, invulnerable: 0, jumpPulse: 0 });
       normalizedSteering = 0;
@@ -457,7 +534,11 @@
           }
         }
       }
-      state.obstacles = state.obstacles.filter(obstacle => obstacle.y < 790 && !obstacle.hit);
+      state.obstacles = state.obstacles.filter(obstacle => {
+        const active = obstacle.y < 790 && !obstacle.hit;
+        if (!active) removeTrafficMesh(obstacle);
+        return active;
+      });
       for (const particle of state.particles) {
         particle.x += particle.vx * dt; particle.y += particle.vy * dt; particle.life -= dt;
       }
@@ -485,6 +566,7 @@
       threeCamera.up.set(0, 1, 0);
       threeCamera.lookAt(target);
       cockpit.rotation.z = -state.player.lean * 0.16;
+      syncTrafficMeshes();
       threeRenderer.render(threeScene, threeCamera);
       updateHud();
     }
@@ -606,12 +688,18 @@
 
     function toggleCamera() {
       if (cameraState === 'off' || cameraState === 'error') enableCamera();
-      else { stopCamera(); status.textContent = 'Camera off · keyboard ready'; status.dataset.connected = 'false'; }
+      else disableCamera();
       updateInputControls();
     }
 
+    function disableCamera() {
+      stopCamera(); status.textContent = 'Camera off · keyboard ready'; status.dataset.connected = 'false';
+    }
+
     cameraButton.addEventListener('click', toggleCamera);
+    cameraCancelButton.addEventListener('click', () => { disableCamera(); updateInputControls(); });
     addEventListener('pagehide', stopCamera);
+    enableCamera();
 
     centerButton.addEventListener('click', () => {
       cameraTilt = 0;
@@ -632,10 +720,10 @@
       const courseLateral = playerCourseLateral();
       return JSON.stringify({
         coordinateSystem: 'logical 1000x700; origin top-left; x right; y down', mode: state.mode,
-        version: 'v2', rendering: { renderer: 'three', camera: threeCamera.type },
+        version: 'v2', rendering: { renderer: 'three', camera: threeCamera.type, trafficMeshes: trafficRoot.children.length },
         course: { segment: course.segment, progress: +course.progress.toFixed(1), length: COURSE_LENGTH, elevation: +course.y.toFixed(2) },
         player: { type: 'light-cycle', x: +state.player.x.toFixed(1), y: state.player.y, courseLateral: +courseLateral.toFixed(2), steering: +normalizedSteering.toFixed(2), lean: +state.player.lean.toFixed(2), cockpitLean: +(-state.player.lean * 0.16).toFixed(3), horizonRoll: 0, jumpHeight: +(state.player.jumpHeight || 0).toFixed(1), jumpCooldown: +state.player.jumpCooldown.toFixed(2), invulnerable: +state.player.invulnerable.toFixed(2), trailPoints: state.energyTrail.length },
-        level: { number: state.level + 1, name: levels[state.level].name, distance: Math.floor(state.levelDistance), target: levels[state.level].length, roadBlend: +state.levelBlend.toFixed(2) }, roadCenterAtPlayer: +roadCenter(state.player.y).toFixed(1), obstacles: state.obstacles.map(o => ({ type: trafficTypes[o.type].name, lane: o.laneIndex, x: +o.x.toFixed(1), y: +o.y.toFixed(1) })), score: Math.floor(state.score),
+        level: { number: state.level + 1, name: levels[state.level].name, distance: Math.floor(state.levelDistance), target: levels[state.level].length, roadBlend: +state.levelBlend.toFixed(2) }, roadCenterAtPlayer: +roadCenter(state.player.y).toFixed(1), obstacles: state.obstacles.map(o => ({ type: trafficTypes[o.type].name, lane: o.laneIndex, x: +o.x.toFixed(1), y: +o.y.toFixed(1), distanceAhead: +obstacleDistanceAhead(o).toFixed(1), rendered: Boolean(trafficMeshes.get(o)?.visible) })), score: Math.floor(state.score),
         best: state.best, lives: state.lives, clears: state.clears, jumps: state.jumps, speed: Math.round(state.speed),
         connected: cameraState === 'ready', input: cameraState === 'ready' ? 'camera' : 'keyboard', camera: { state: cameraState, roll: +cameraRoll.toFixed(2), pitch: +cameraPitch.toFixed(3), pitchDelta: +cameraPitchDelta.toFixed(3), tilt: +cameraTilt.toFixed(2), calibrationQuality: cameraPreview.dataset.quality, calibrationProgress: Math.min(100, Math.round(calibrationStableMs / 1200 * 100)) }, view: 'first-person', fullscreen: Boolean(document.fullscreenElement)
       });

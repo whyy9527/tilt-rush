@@ -22,6 +22,7 @@
     .face-guide::before { left: 24%; } .face-guide::after { right: 24%; }
     .calibration-progress { height: 6px; margin-top: 14px; overflow: hidden; border-radius: 999px; background: #ffffff1b; }
     #calibration-fill { width: 0; height: 100%; border-radius: inherit; background: #55f59c; box-shadow: 0 0 12px #55f59c; transition: width 80ms linear; }
+    #camera-cancel { width: 100%; margin-top: 14px; }
     .topbar { position: fixed; z-index: 2; inset: 20px 20px auto; display: flex; justify-content: space-between; align-items: flex-start; gap: 24px; pointer-events: none; }
     .panel { border: 1px solid #ff7a3a55; border-radius: 7px 20px 7px 20px; background: linear-gradient(135deg, #07111ef2, #131019e8); box-shadow: 0 8px 30px #0008, inset 3px 0 #ff542e; backdrop-filter: blur(12px); }
     .race-hud { width: min(430px, 45vw); overflow: hidden; }
@@ -71,6 +72,7 @@
       <p id="calibration-copy">Keep your face inside the green guide.</p>
       <div class="camera-preview" id="camera-preview" data-quality="align"><video id="camera-feed" playsinline muted></video><div class="face-guide" aria-hidden="true"></div></div>
       <div class="calibration-progress" id="calibration-progress" role="progressbar" aria-label="Stable calibration samples" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><div id="calibration-fill"></div></div>
+      <button id="camera-cancel" type="button">Use keyboard instead</button>
     </section>
   </div>
   <div class="topbar">
@@ -105,6 +107,7 @@
     const calibrationFill = document.querySelector('#calibration-fill');
     const calibrationProgress = document.querySelector('#calibration-progress');
     const cameraPreview = document.querySelector('#camera-preview');
+    const cameraCancelButton = document.querySelector('#camera-cancel');
     const telemetry = document.querySelector('#telemetry');
     const hudStageIndex = document.querySelector('#hud-stage-index');
     const hudStageName = document.querySelector('#hud-stage-name');
@@ -575,12 +578,18 @@
 
     function toggleCamera() {
       if (cameraState === 'off' || cameraState === 'error') enableCamera();
-      else { stopCamera(); status.textContent = 'Camera off · keyboard ready'; status.dataset.connected = 'false'; }
+      else disableCamera();
       updateInputControls();
     }
 
+    function disableCamera() {
+      stopCamera(); status.textContent = 'Camera off · keyboard ready'; status.dataset.connected = 'false';
+    }
+
     cameraButton.addEventListener('click', toggleCamera);
+    cameraCancelButton.addEventListener('click', () => { disableCamera(); updateInputControls(); });
     addEventListener('pagehide', stopCamera);
+    enableCamera();
 
     centerButton.addEventListener('click', () => {
       cameraTilt = 0;

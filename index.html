@@ -322,7 +322,7 @@
     const trafficWheelMaterial = new THREE.MeshStandardMaterial({ color: 0x090b0f, roughness: 0.92 });
     const trafficTailMaterial = new THREE.MeshStandardMaterial({ color: 0xff3028, emissive: 0xff1d16, emissiveIntensity: 3.2 });
     const trafficForward = new THREE.Vector3(0, 0, -1);
-    const TRAFFIC_WORLD_DISTANCE_PER_LOGICAL = 0.1;
+    const TRAFFIC_WORLD_DISTANCE_PER_LOGICAL = 1 / COURSE_DISTANCE_SCALE;
 
     function createTrafficMesh(typeIndex) {
       const type = trafficTypes[typeIndex];

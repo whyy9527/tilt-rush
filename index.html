@@ -22,7 +22,8 @@
     .face-guide::before { left: 24%; } .face-guide::after { right: 24%; }
     .calibration-progress { height: 6px; margin-top: 14px; overflow: hidden; border-radius: 999px; background: #ffffff1b; }
     #calibration-fill { width: 0; height: 100%; border-radius: inherit; background: #55f59c; box-shadow: 0 0 12px #55f59c; transition: width 80ms linear; }
-    #camera-cancel { width: 100%; margin-top: 14px; }
+    .camera-actions { display: grid; gap: 8px; margin-top: 14px; }
+    .camera-actions button { width: 100%; }
     .topbar { position: fixed; z-index: 2; inset: 20px 20px auto; display: flex; justify-content: space-between; align-items: flex-start; gap: 24px; pointer-events: none; }
     .panel { border: 1px solid #ff7a3a55; border-radius: 7px 20px 7px 20px; background: linear-gradient(135deg, #07111ef2, #131019e8); box-shadow: 0 8px 30px #0008, inset 3px 0 #ff542e; backdrop-filter: blur(12px); }
     .race-hud { width: min(430px, 45vw); overflow: hidden; }
@@ -70,9 +71,9 @@
     <section class="calibration-card" role="dialog" aria-modal="true" aria-labelledby="calibration-title">
       <h2 id="calibration-title">Starting camera…</h2>
       <p id="calibration-copy">Keep your face inside the green guide.</p>
-      <div class="camera-preview" id="camera-preview" data-quality="align"><video id="camera-feed" playsinline muted></video><div class="face-guide" aria-hidden="true"></div></div>
+      <div class="camera-preview" id="camera-preview" data-quality="align"><video id="camera-feed" autoplay playsinline muted></video><div class="face-guide" aria-hidden="true"></div></div>
       <div class="calibration-progress" id="calibration-progress" role="progressbar" aria-label="Stable calibration samples" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><div id="calibration-fill"></div></div>
-      <button id="camera-cancel" type="button">Use keyboard instead</button>
+      <div class="camera-actions"><button id="camera-resume" type="button" hidden>Start camera</button><button id="camera-cancel" type="button">Use keyboard instead</button></div>
     </section>
   </div>
   <div class="topbar">
@@ -107,6 +108,7 @@
     const calibrationFill = document.querySelector('#calibration-fill');
     const calibrationProgress = document.querySelector('#calibration-progress');
     const cameraPreview = document.querySelector('#camera-preview');
+    const cameraResumeButton = document.querySelector('#camera-resume');
     const cameraCancelButton = document.querySelector('#camera-cancel');
     const telemetry = document.querySelector('#telemetry');
     const hudStageIndex = document.querySelector('#hud-stage-index');
@@ -482,6 +484,7 @@
       neutralRoll = 0; neutralPitch = 0; previousCameraPitch = 0;
       status.textContent = 'Align your face';
       cameraOverlay.hidden = false; calibrationTitle.textContent = title; calibrationCopy.textContent = 'Center your face in the guide.';
+      cameraResumeButton.hidden = true;
       cameraPreview.dataset.quality = 'align'; calibrationFill.style.width = '0%'; calibrationProgress.setAttribute('aria-valuenow', '0');
       updateInputControls();
     }
@@ -491,29 +494,56 @@
       return sorted[Math.floor(sorted.length / 2)];
     }
 
+    function showCameraPlaybackRecovery() {
+      cameraState = 'waiting'; status.textContent = 'Tap Start camera';
+      cameraOverlay.hidden = false; calibrationTitle.textContent = 'Start camera';
+      calibrationCopy.textContent = 'Your browser needs one tap to show the camera preview.';
+      cameraResumeButton.hidden = false; updateInputControls();
+    }
+
+    async function startHeadTracking(requestId) {
+      try {
+        await cameraVideo.play();
+      } catch (error) {
+        if (error?.name === 'NotAllowedError' && requestId === cameraRequestId && cameraStream) {
+          showCameraPlaybackRecovery(); return;
+        }
+        throw error;
+      }
+      if (requestId !== cameraRequestId || !cameraStream) return;
+      cameraResumeButton.hidden = true; calibrationTitle.textContent = 'Loading head tracking…';
+      const vision = await import('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.35/+esm');
+      const files = await vision.FilesetResolver.forVisionTasks('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.35/wasm');
+      const createdFaceLandmarker = await vision.FaceLandmarker.createFromOptions(files, {
+        baseOptions: { modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task', delegate: 'CPU' },
+        runningMode: 'VIDEO', numFaces: 1, minFaceDetectionConfidence: .55, minFacePresenceConfidence: .55, minTrackingConfidence: .55
+      });
+      if (requestId !== cameraRequestId) { createdFaceLandmarker.close(); return; }
+      faceLandmarker?.close(); faceLandmarker = createdFaceLandmarker;
+      beginCameraCalibration('Set your neutral position');
+      requestAnimationFrame(trackCamera);
+    }
+
+    function handleCameraError(error) {
+      const permissionDenied = error?.name === 'NotAllowedError' && !cameraStream;
+      stopCamera();
+      status.textContent = permissionDenied ? 'Camera denied · keyboard mode' : `Camera error · ${String(error?.message || error).slice(0, 54)}`;
+      updateInputControls();
+    }
+
     async function enableCamera() {
-      if (cameraState === 'loading' || cameraState === 'ready') return;
+      if (cameraState !== 'off' && cameraState !== 'error') return;
       const requestId = ++cameraRequestId;
       cameraState = 'loading'; status.textContent = 'Requesting camera permission…'; updateInputControls();
-      cameraOverlay.hidden = false; calibrationTitle.textContent = 'Starting camera…'; calibrationCopy.textContent = 'Camera video stays on this device.'; calibrationFill.style.width = '0%';
+      cameraOverlay.hidden = false; calibrationTitle.textContent = 'Starting camera…'; calibrationCopy.textContent = 'Camera video stays on this device.'; calibrationFill.style.width = '0%'; cameraResumeButton.hidden = true;
       try {
+        cameraVideo.autoplay = true; cameraVideo.muted = true; cameraVideo.playsInline = true;
         cameraStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } }, audio: false });
         if (requestId !== cameraRequestId) { for (const track of cameraStream.getTracks()) track.stop(); cameraStream = undefined; return; }
-        cameraVideo.srcObject = cameraStream; await cameraVideo.play(); calibrationTitle.textContent = 'Loading head tracking…';
-        const vision = await import('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.35/+esm');
-        const files = await vision.FilesetResolver.forVisionTasks('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.35/wasm');
-        const createdFaceLandmarker = await vision.FaceLandmarker.createFromOptions(files, {
-          baseOptions: { modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task', delegate: 'CPU' },
-          runningMode: 'VIDEO', numFaces: 1, minFaceDetectionConfidence: .55, minFacePresenceConfidence: .55, minTrackingConfidence: .55
-        });
-        if (requestId !== cameraRequestId) { createdFaceLandmarker.close(); return; }
-        faceLandmarker?.close(); faceLandmarker = createdFaceLandmarker;
-        beginCameraCalibration('Set your neutral position');
-        requestAnimationFrame(trackCamera);
+        cameraVideo.srcObject = cameraStream;
+        await startHeadTracking(requestId);
       } catch (error) {
-        cameraState = 'error'; cameraOverlay.hidden = true;
-        status.textContent = error?.name === 'NotAllowedError' ? 'Camera denied · keyboard mode' : `Camera error · ${String(error?.message || error).slice(0, 54)}`;
-        stopCamera(); updateInputControls();
+        handleCameraError(error);
       }
     }
 
@@ -573,7 +603,7 @@
     function stopCamera() {
       cameraRequestId += 1;
       for (const track of cameraStream?.getTracks() || []) track.stop();
-      cameraStream = undefined; cameraVideo.srcObject = null; cameraTilt = 0; cameraState = 'off'; cameraOverlay.hidden = true;
+      cameraStream = undefined; cameraVideo.pause(); cameraVideo.srcObject = null; cameraResumeButton.hidden = true; cameraTilt = 0; cameraState = 'off'; cameraOverlay.hidden = true;
     }
 
     function toggleCamera() {
@@ -587,6 +617,12 @@
     }
 
     cameraButton.addEventListener('click', toggleCamera);
+    cameraResumeButton.addEventListener('click', async () => {
+      if (cameraState !== 'waiting' || !cameraStream) return;
+      const requestId = cameraRequestId;
+      cameraState = 'loading'; status.textContent = 'Starting camera…'; cameraResumeButton.hidden = true; updateInputControls();
+      try { await startHeadTracking(requestId); } catch (error) { handleCameraError(error); }
+    });
     cameraCancelButton.addEventListener('click', () => { disableCamera(); updateInputControls(); });
     addEventListener('pagehide', stopCamera);
     enableCamera();

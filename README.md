@@ -2,11 +2,11 @@
 
 The frozen top-down edition of Tilt Rush, an open-source browser racing game controlled with head movement through a webcam. Lean to steer, flick upward to jump traffic, or use the keyboard fallback.
 
-The annotated `v1.0.1` tag is the source of truth for this completed edition. Active development on `main` belongs to the separate first-person V2 line.
+The annotated `v1.0.2` tag is the source of truth for this completed edition. Active development on `main` belongs to the separate first-person V2 line.
 
 ## Play
 
-Open the GitHub Pages deployment, allow the automatic camera request, complete the short neutral-position calibration, and start a run. If camera access is denied or unavailable, keyboard controls remain active and the camera can be retried from the control deck.
+Open the GitHub Pages deployment, allow the automatic camera request, complete the short neutral-position calibration, and start a run. Mobile browsers that block automatic preview playback show a `Start camera` action without requesting permission again. If camera access is denied or unavailable, keyboard controls remain active and the camera can be retried from the control deck.
 
 - Lean left/right: steer
 - Flick upward: jump

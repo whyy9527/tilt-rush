@@ -329,9 +329,67 @@
       }
     }
 
+    const stageOneWorldEnd = courseStages[0].endDistance / COURSE_DISTANCE_SCALE;
+    const stageOneRoadside = new THREE.Group();
+    stageOneRoadside.name = 'stage-one-roadside';
+    threeScene.add(stageOneRoadside);
+
+    const guardrailStep = 1;
+    const guardrailDistances = [];
+    for (let distance = guardrailStep / 2; distance < stageOneWorldEnd; distance += guardrailStep) guardrailDistances.push(distance);
+    const guardrailGeometry = new THREE.BoxGeometry(0.14, 0.18, guardrailStep * 1.18);
+    const guardrailMaterial = new THREE.MeshStandardMaterial({ color: 0x9fb2c8, emissive: 0x172332, emissiveIntensity: 0.7, roughness: 0.36, metalness: 0.72 });
+    const stageOneGuardrails = new THREE.InstancedMesh(guardrailGeometry, guardrailMaterial, guardrailDistances.length * 2);
+    const guardrailTransform = new THREE.Object3D();
+    const courseForward = new THREE.Vector3(0, 0, -1);
+    let guardrailInstance = 0;
+    for (const distance of guardrailDistances) {
+      const frame = courseFrameAt(distance);
+      for (const side of [-1, 1]) {
+        guardrailTransform.position.copy(frame.point).addScaledVector(frame.right, side * 5.45);
+        guardrailTransform.position.y += 0.42;
+        guardrailTransform.quaternion.setFromUnitVectors(courseForward, frame.tangent);
+        guardrailTransform.updateMatrix();
+        stageOneGuardrails.setMatrixAt(guardrailInstance++, guardrailTransform.matrix);
+      }
+    }
+    stageOneGuardrails.instanceMatrix.needsUpdate = true;
+    stageOneRoadside.add(stageOneGuardrails);
+
+    const lightPoleDistances = [];
+    for (let distance = 6; distance < stageOneWorldEnd; distance += 12) lightPoleDistances.push(distance);
+    const lightPoleGeometry = new THREE.BoxGeometry(0.12, 2.8, 0.12);
+    const lightPoleMaterial = new THREE.MeshStandardMaterial({ color: 0x485b70, roughness: 0.42, metalness: 0.65 });
+    const lightHeadGeometry = new THREE.BoxGeometry(0.46, 0.16, 0.28);
+    const lightHeadMaterial = new THREE.MeshStandardMaterial({ color: 0xbdeaff, emissive: 0x4cc9ff, emissiveIntensity: 3.2, roughness: 0.24 });
+    const stageOneLightPoles = new THREE.InstancedMesh(lightPoleGeometry, lightPoleMaterial, lightPoleDistances.length * 2);
+    const stageOneLightHeads = new THREE.InstancedMesh(lightHeadGeometry, lightHeadMaterial, lightPoleDistances.length * 2);
+    const lightTransform = new THREE.Object3D();
+    let lightInstance = 0;
+    for (const distance of lightPoleDistances) {
+      const frame = courseFrameAt(distance);
+      const yaw = Math.atan2(frame.tangent.x, -frame.tangent.z);
+      for (const side of [-1, 1]) {
+        lightTransform.rotation.set(0, yaw, 0);
+        lightTransform.position.copy(frame.point).addScaledVector(frame.right, side * 5.9);
+        lightTransform.position.y += 1.4;
+        lightTransform.updateMatrix();
+        stageOneLightPoles.setMatrixAt(lightInstance, lightTransform.matrix);
+        lightTransform.position.copy(frame.point).addScaledVector(frame.right, side * 5.72);
+        lightTransform.position.y += 2.76;
+        lightTransform.updateMatrix();
+        stageOneLightHeads.setMatrixAt(lightInstance, lightTransform.matrix);
+        lightInstance += 1;
+      }
+    }
+    stageOneLightPoles.instanceMatrix.needsUpdate = true;
+    stageOneLightHeads.instanceMatrix.needsUpdate = true;
+    stageOneRoadside.add(stageOneLightPoles, stageOneLightHeads);
+
     const roadsideGeometry = new THREE.BoxGeometry(0.14, 1.25, 0.14);
     const roadsideMaterial = new THREE.MeshStandardMaterial({ color: 0xffb35a, emissive: 0x6b2b08, emissiveIntensity: 1.2 });
     for (let distance = 10; distance < COURSE_GEOMETRY_LENGTH; distance += 14) {
+      if (distance < stageOneWorldEnd) continue;
       const frame = courseFrameAt(distance);
       for (const side of [-1, 1]) {
         const roadsideMarker = new THREE.Mesh(roadsideGeometry, roadsideMaterial);
@@ -811,7 +869,7 @@
       const stage = courseStages[state.level];
       return JSON.stringify({
         coordinateSystem: 'logical 1000x700; origin top-left; x right; y down', mode: state.mode,
-        version: 'v2', rendering: { renderer: 'three', camera: threeCamera.type, trafficMeshes: trafficRoot.children.length, courseControls: courseCenterlineControls.length, roadSurface: 'wet-asphalt-v1', roadUvs: road.geometry.getAttribute('uv').count },
+        version: 'v2', rendering: { renderer: 'three', camera: threeCamera.type, trafficMeshes: trafficRoot.children.length, courseControls: courseCenterlineControls.length, roadSurface: 'wet-asphalt-v1', roadUvs: road.geometry.getAttribute('uv').count, stageOneRoadside: { guardrails: stageOneGuardrails.count, lightPoles: stageOneLightPoles.count } },
         course: { segment: course.segment, progress: +course.progress.toFixed(1), length: COURSE_LENGTH, centerX: +course.x.toFixed(2), elevation: +course.y.toFixed(2) },
         player: { type: 'light-cycle', x: +state.player.x.toFixed(1), y: state.player.y, courseLateral: +courseLateral.toFixed(2), steering: +normalizedSteering.toFixed(2), lean: +state.player.lean.toFixed(2), cockpitLean: +(-state.player.lean * 0.16).toFixed(3), horizonRoll: 0, jumpHeight: +(state.player.jumpHeight || 0).toFixed(1), jumpCooldown: +state.player.jumpCooldown.toFixed(2), invulnerable: +state.player.invulnerable.toFixed(2), trailPoints: state.energyTrail.length },
         level: { number: stage.index + 1, name: stage.name, distance: Math.floor(state.levelDistance), target: stage.length, startDistance: stage.startDistance, endDistance: stage.endDistance, roadBlend: +state.levelBlend.toFixed(2) }, roadCenterAtPlayer: +roadCenter(state.player.y).toFixed(1), obstacles: state.obstacles.map(o => ({ type: trafficTypes[o.type].name, lane: o.laneIndex, x: +o.x.toFixed(1), y: +o.y.toFixed(1), distanceAhead: +obstacleDistanceAhead(o).toFixed(1), rendered: Boolean(trafficMeshes.get(o)?.visible) })), score: Math.floor(state.score),

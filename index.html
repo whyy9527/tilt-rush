@@ -130,12 +130,24 @@
     const menu = document.querySelector('#menu');
     const message = document.querySelector('#message');
     const startButton = document.querySelector('#start');
-    const levels = [
+    let cumulativeStageDistance = 0;
+    const courseStages = [
       { name: 'Ignition Mile', subtitle: 'Learn the lanes', length: 2600, curve: 'straight', interval: 1.3, pattern: [[1], [0], [2], [1], [0], [2]] },
       { name: 'Dockside Sweep', subtitle: 'Read the long bend', length: 3600, curve: 'sweep', interval: 1.12, pattern: [[0], [2], [1], [0, 1], [2], [1]] },
       { name: 'Neon Chicane', subtitle: 'Link the openings', length: 4400, curve: 'chicane', interval: .96, pattern: [[0, 1], [2], [1, 2], [0], [0, 2], [1]] },
       { name: 'Skyway Hooks', subtitle: 'Commit, jump, recover', length: 5400, curve: 'hooks', interval: .84, pattern: [[0, 2], [1], [0, 1], [2], [1, 2], [0], [0, 2], [1]] }
-    ];
+    ].map((stage, index) => {
+      const startDistance = cumulativeStageDistance;
+      cumulativeStageDistance += stage.length;
+      return Object.freeze({ ...stage, index, startDistance, endDistance: cumulativeStageDistance });
+    });
+    const TOTAL_COURSE_DISTANCE = cumulativeStageDistance;
+
+    function courseStageAtDistance(distance) {
+      const clampedDistance = Math.max(0, Math.min(TOTAL_COURSE_DISTANCE, distance));
+      if (clampedDistance === TOTAL_COURSE_DISTANCE) return courseStages[courseStages.length - 1];
+      return courseStages.find(stage => clampedDistance < stage.endDistance);
+    }
     const trafficTypes = [
       { name: 'Model 3', src: 'assets/traffic/model-3.png', width: 54, height: 112, color: 0x2553a6, worldWidth: 1.7, worldHeight: 0.62, worldLength: 3.8 },
       { name: 'Model Y', src: 'assets/traffic/model-y.png', width: 58, height: 112, color: 0xe3e7ed, worldWidth: 1.82, worldHeight: 0.78, worldLength: 4.05 },
@@ -177,7 +189,7 @@
 
     const COURSE_LENGTH = 370;
     const COURSE_GEOMETRY_LENGTH = 430;
-    const COURSE_DISTANCE_SCALE = levels.reduce((total, level) => total + level.length, 0) / COURSE_LENGTH;
+    const COURSE_DISTANCE_SCALE = TOTAL_COURSE_DISTANCE / COURSE_LENGTH;
 
     function smoothstep01(value) {
       const t = Math.max(0, Math.min(1, value));
@@ -425,8 +437,8 @@
     }
 
     function spawnObstacle() {
-      const level = levels[state.level];
-      const lanes = level.pattern[state.spawnIndex++ % level.pattern.length];
+      const stage = courseStages[state.level];
+      const lanes = stage.pattern[state.spawnIndex++ % stage.pattern.length];
       const y = -110;
       for (const laneIndex of lanes) {
         const type = (state.spawnIndex + laneIndex - 1) % trafficTypes.length; const traffic = trafficTypes[type];
@@ -436,7 +448,7 @@
 
     function levelRoadCenter(levelIndex, y) {
       const travel = state.totalDistance;
-      const curve = levels[levelIndex].curve;
+      const curve = courseStages[levelIndex].curve;
       if (curve === 'straight') return 500;
       if (curve === 'sweep') return 500 + Math.sin((y + travel) / 430) * 64;
       if (curve === 'chicane') return 500 + Math.sin((y + travel) / 210) * 78 + Math.sin((y + travel) / 520 + .7) * 20;
@@ -480,29 +492,27 @@
       state.elapsed += dt;
       state.score += dt * (12 + state.speed / 55);
       state.speed = Math.min(560, 260 + state.elapsed * 10);
-      state.totalDistance += state.speed * dt;
-      state.levelDistance += state.speed * dt;
+      state.totalDistance = Math.min(TOTAL_COURSE_DISTANCE, state.totalDistance + state.speed * dt);
       state.levelFlash = Math.max(0, state.levelFlash - dt);
       state.levelBlend = Math.min(1, state.levelBlend + dt / 2);
-      const currentLevel = levels[state.level];
-      if (state.levelDistance >= currentLevel.length) {
-        if (state.level === levels.length - 1) {
-          state.levelDistance = currentLevel.length;
-          completeCourse();
-          return;
-        }
-        state.levelDistance -= currentLevel.length;
+      const currentStage = courseStageAtDistance(state.totalDistance);
+      if (currentStage.index !== state.level) {
         state.previousLevel = state.level;
-        state.level = Math.min(state.level + 1, levels.length - 1);
+        state.level = currentStage.index;
         state.spawnIndex = 0; state.spawnTimer = Math.max(state.spawnTimer, 1.05);
         state.levelBlend = 0;
         state.levelFlash = 2.2;
+      }
+      state.levelDistance = Math.min(currentStage.length, state.totalDistance - currentStage.startDistance);
+      if (state.totalDistance >= TOTAL_COURSE_DISTANCE) {
+        completeCourse();
+        return;
       }
       state.roadOffset = (state.roadOffset + state.speed * dt) % 150;
       state.spawnTimer -= dt;
       if (state.spawnTimer <= 0) {
         spawnObstacle();
-        state.spawnTimer += Math.max(0.66, levels[state.level].interval - state.elapsed * 0.0025);
+        state.spawnTimer += Math.max(0.66, courseStages[state.level].interval - state.elapsed * 0.0025);
       }
 
       const keyboard = (keys.has('ArrowRight') ? 1 : 0) - (keys.has('ArrowLeft') ? 1 : 0);
@@ -548,9 +558,10 @@
     }
 
     function updateHud() {
-      const levelProgress = Math.min(100, Math.floor(state.levelDistance / levels[state.level].length * 100));
+      const stage = courseStages[state.level];
+      const levelProgress = Math.min(100, Math.floor(state.levelDistance / stage.length * 100));
       const displaySpeed = Math.round(state.speed); const gear = Math.min(6, Math.max(1, Math.floor(displaySpeed / 85)));
-      hudStageIndex.textContent = `Night run · Stage ${state.level + 1}/${levels.length}`; hudStageName.textContent = levels[state.level].name;
+      hudStageIndex.textContent = `Night run · Stage ${stage.index + 1}/${courseStages.length}`; hudStageName.textContent = stage.name;
       hudStagePercent.textContent = `${levelProgress}%`; stageFill.style.width = `${levelProgress}%`;
       hudSpeed.textContent = displaySpeed; hudGear.textContent = gear; revFill.style.width = `${Math.min(100, 28 + (displaySpeed % 85) / 85 * 72)}%`;
       hudScore.textContent = Math.floor(state.score); hudBest.textContent = Math.max(state.best, Math.floor(state.score)); hudLives.textContent = `${'●'.repeat(state.lives)}${'○'.repeat(3 - state.lives)}`;
@@ -754,12 +765,13 @@
     window.render_game_to_text = () => {
       const course = courseProfileAt(currentCourseProgress());
       const courseLateral = playerCourseLateral();
+      const stage = courseStages[state.level];
       return JSON.stringify({
         coordinateSystem: 'logical 1000x700; origin top-left; x right; y down', mode: state.mode,
         version: 'v2', rendering: { renderer: 'three', camera: threeCamera.type, trafficMeshes: trafficRoot.children.length },
         course: { segment: course.segment, progress: +course.progress.toFixed(1), length: COURSE_LENGTH, elevation: +course.y.toFixed(2) },
         player: { type: 'light-cycle', x: +state.player.x.toFixed(1), y: state.player.y, courseLateral: +courseLateral.toFixed(2), steering: +normalizedSteering.toFixed(2), lean: +state.player.lean.toFixed(2), cockpitLean: +(-state.player.lean * 0.16).toFixed(3), horizonRoll: 0, jumpHeight: +(state.player.jumpHeight || 0).toFixed(1), jumpCooldown: +state.player.jumpCooldown.toFixed(2), invulnerable: +state.player.invulnerable.toFixed(2), trailPoints: state.energyTrail.length },
-        level: { number: state.level + 1, name: levels[state.level].name, distance: Math.floor(state.levelDistance), target: levels[state.level].length, roadBlend: +state.levelBlend.toFixed(2) }, roadCenterAtPlayer: +roadCenter(state.player.y).toFixed(1), obstacles: state.obstacles.map(o => ({ type: trafficTypes[o.type].name, lane: o.laneIndex, x: +o.x.toFixed(1), y: +o.y.toFixed(1), distanceAhead: +obstacleDistanceAhead(o).toFixed(1), rendered: Boolean(trafficMeshes.get(o)?.visible) })), score: Math.floor(state.score),
+        level: { number: stage.index + 1, name: stage.name, distance: Math.floor(state.levelDistance), target: stage.length, startDistance: stage.startDistance, endDistance: stage.endDistance, roadBlend: +state.levelBlend.toFixed(2) }, roadCenterAtPlayer: +roadCenter(state.player.y).toFixed(1), obstacles: state.obstacles.map(o => ({ type: trafficTypes[o.type].name, lane: o.laneIndex, x: +o.x.toFixed(1), y: +o.y.toFixed(1), distanceAhead: +obstacleDistanceAhead(o).toFixed(1), rendered: Boolean(trafficMeshes.get(o)?.visible) })), score: Math.floor(state.score),
         best: state.best, lives: state.lives, clears: state.clears, jumps: state.jumps, speed: Math.round(state.speed),
         connected: cameraState === 'ready', input: cameraState === 'ready' ? 'camera' : 'keyboard', camera: { state: cameraState, roll: +cameraRoll.toFixed(2), pitch: +cameraPitch.toFixed(3), pitchDelta: +cameraPitchDelta.toFixed(3), tilt: +cameraTilt.toFixed(2), calibrationQuality: cameraPreview.dataset.quality, calibrationProgress: Math.min(100, Math.round(calibrationStableMs / 1200 * 100)) }, view: 'first-person', fullscreen: Boolean(document.fullscreenElement)
       });

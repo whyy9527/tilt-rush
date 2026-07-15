@@ -30,7 +30,10 @@
     .race-heading { display: flex; justify-content: space-between; gap: 12px; padding: 13px 16px 8px; }
     .eyebrow { color: #ff815b; font-size: 10px; font-weight: 900; letter-spacing: .16em; text-transform: uppercase; }
     #hud-stage-name { display: block; margin-top: 2px; font-size: 21px; font-weight: 900; letter-spacing: -.035em; }
-    #hud-stage-percent { align-self: end; font-size: 22px; font-weight: 300; font-variant-numeric: tabular-nums; }
+    .race-progress { align-self: end; text-align: right; }
+    #hud-stage-percent { display: block; font-size: 22px; font-weight: 300; font-variant-numeric: tabular-nums; }
+    #hud-flow { display: block; margin-top: 2px; color: #8f99a7; font-size: 10px; font-weight: 800; font-variant-numeric: tabular-nums; letter-spacing: .06em; white-space: nowrap; }
+    #hud-flow[data-active="true"] { color: #72f1b8; }
     .stage-track { height: 4px; margin: 0 16px 10px; overflow: hidden; background: #ffffff19; transform: skewX(-18deg); }
     #stage-fill { width: 0; height: 100%; background: linear-gradient(90deg, #ff3d28, #ffb04f); box-shadow: 0 0 12px #ff5b36; }
     .control-deck { padding: 9px 13px 11px 16px; border-top: 1px solid #ffffff13; background: #02071052; }
@@ -86,7 +89,7 @@
   </div>
   <div class="topbar">
     <section class="panel race-hud" aria-label="Race objective and controls">
-      <div class="race-heading"><div><span class="eyebrow" id="hud-stage-index">Night run · Stage 1/4</span><strong id="hud-stage-name">Ignition Mile</strong></div><span id="hud-stage-percent">0%</span></div>
+      <div class="race-heading"><div><span class="eyebrow" id="hud-stage-index">Night run · Stage 1/4</span><strong id="hud-stage-name">Ignition Mile</strong></div><div class="race-progress"><span id="hud-stage-percent">0%</span><span id="hud-flow">FLOW 0 · ×1.0</span></div></div>
       <div class="stage-track"><div id="stage-fill"></div></div>
       <div class="control-deck"><span id="status">Camera off · keyboard ready</span><div class="actions"><button id="camera" type="button" aria-pressed="false">Enable camera</button><button id="center" type="button" disabled>Recenter</button><button id="audio" type="button" aria-label="Mute engine" aria-pressed="false">Mute</button><button id="fullscreen" type="button">Full screen</button></div></div>
     </section>
@@ -125,6 +128,7 @@
     const hudStageIndex = document.querySelector('#hud-stage-index');
     const hudStageName = document.querySelector('#hud-stage-name');
     const hudStagePercent = document.querySelector('#hud-stage-percent');
+    const hudFlow = document.querySelector('#hud-flow');
     const stageFill = document.querySelector('#stage-fill');
     const hudSpeed = document.querySelector('#hud-speed');
     const hudGear = document.querySelector('#hud-gear');
@@ -579,7 +583,7 @@
     const ENGINE_MIN_SPEED = 260;
     const ENGINE_MAX_SPEED = 560;
     const state = {
-      mode: 'ready', score: 0, best: Number(localStorage.getItem('tilt-rush-v2-best') || 0), lives: 3, clears: 0, jumps: 0,
+      mode: 'ready', score: 0, best: Number(localStorage.getItem('tilt-rush-v2-best') || 0), lives: 3, clears: 0, jumps: 0, flow: 0,
       elapsed: 0, speed: 260, spawnTimer: 1.1, spawnIndex: 0, roadOffset: 0, level: 0, previousLevel: 0, levelBlend: 1, levelDistance: 0, totalDistance: 0, levelFlash: 0, countdownRemaining: 0, countdownGoRemaining: 0,
       player: { x: 500, y: 590, width: 30, height: 104, lean: 0, jumpRemaining: 0, jumpCooldown: 0, invulnerable: 0, jumpPulse: 0 }, obstacles: [], particles: [], energyTrail: [], trailTimer: 0
     };
@@ -595,7 +599,7 @@
 
     function resetGame() {
       for (const obstacle of state.obstacles) removeTrafficMesh(obstacle);
-      Object.assign(state, { mode: 'countdown', score: 0, lives: 3, clears: 0, jumps: 0, elapsed: 0, speed: 260, spawnTimer: 1.1, spawnIndex: 0, roadOffset: 0, level: 0, previousLevel: 0, levelBlend: 1, levelDistance: 0, totalDistance: 0, levelFlash: 2.2, countdownRemaining: COUNTDOWN_SECONDS, countdownGoRemaining: 0, obstacles: [], particles: [], energyTrail: [], trailTimer: 0 });
+      Object.assign(state, { mode: 'countdown', score: 0, lives: 3, clears: 0, jumps: 0, flow: 0, elapsed: 0, speed: 260, spawnTimer: 1.1, spawnIndex: 0, roadOffset: 0, level: 0, previousLevel: 0, levelBlend: 1, levelDistance: 0, totalDistance: 0, levelFlash: 2.2, countdownRemaining: COUNTDOWN_SECONDS, countdownGoRemaining: 0, obstacles: [], particles: [], energyTrail: [], trailTimer: 0 });
       Object.assign(state.player, { x: 500, y: 590, lean: 0, jumpRemaining: 0, jumpHeight: 0, jumpCooldown: 0, invulnerable: 0, jumpPulse: 0 });
       normalizedSteering = 0;
       menu.hidden = true;
@@ -752,6 +756,7 @@
     }
 
     function crash(obstacle) {
+      state.flow = 0;
       state.lives -= 1;
       state.player.invulnerable = 1.2;
       for (let i = 0; i < 18; i++) state.particles.push({ x: state.player.x, y: state.player.y, vx: (i % 6 - 2.5) * 55, vy: -40 - (i % 4) * 25, life: 0.55 });
@@ -768,6 +773,16 @@
       for (let i = 0; i < 12; i++) state.particles.push({ x: state.player.x, y: state.player.y + 45, vx: (i - 5.5) * 18, vy: 40 + Math.abs(i - 5.5) * 8, life: .42, jump: true });
     }
 
+    function flowMultiplier() {
+      return Math.min(3, 1 + state.flow * 0.1);
+    }
+
+    function registerCleanPass(obstacle) {
+      if (obstacle.hit || obstacle.flowCounted) return;
+      obstacle.flowCounted = true;
+      state.flow += 1;
+    }
+
     function update(dt) {
       if (state.mode === 'countdown') {
         state.countdownRemaining = Math.max(0, state.countdownRemaining - dt);
@@ -781,7 +796,7 @@
       if (state.mode !== 'playing') return;
       state.countdownGoRemaining = Math.max(0, state.countdownGoRemaining - dt);
       state.elapsed += dt;
-      state.score += dt * (12 + state.speed / 55);
+      state.score += dt * (12 + state.speed / 55) * flowMultiplier();
       state.speed = Math.min(560, 260 + state.elapsed * 10);
       state.totalDistance = Math.min(TOTAL_COURSE_DISTANCE, state.totalDistance + state.speed * dt);
       state.levelFlash = Math.max(0, state.levelFlash - dt);
@@ -826,6 +841,7 @@
       for (const point of state.energyTrail) { point.y += state.speed * dt * .34; point.life -= dt; }
       state.energyTrail = state.energyTrail.filter(point => point.life > 0 && point.y < 760);
 
+      let crashedThisFrame = false;
       for (const obstacle of state.obstacles) {
         obstacle.y += state.speed * dt;
         obstacle.x = roadCenter(obstacle.y) + (obstacle.laneIndex - 1) * 150;
@@ -834,11 +850,14 @@
             if (!obstacle.jumped) { obstacle.jumped = true; state.clears += 1; state.score += 25; }
           } else if (state.player.invulnerable === 0) {
             crash(obstacle);
+            crashedThisFrame = true;
           }
         }
       }
       state.obstacles = state.obstacles.filter(obstacle => {
-        const active = obstacle.y < 790 && !obstacle.hit;
+        const leftPlay = obstacle.y >= 790;
+        if (leftPlay && !crashedThisFrame) registerCleanPass(obstacle);
+        const active = !leftPlay && !obstacle.hit;
         if (!active) removeTrafficMesh(obstacle);
         return active;
       });
@@ -854,6 +873,7 @@
       const displaySpeed = Math.round(state.speed); const gear = Math.min(6, Math.max(1, Math.floor(displaySpeed / 85)));
       hudStageIndex.textContent = `Night run · Stage ${stage.index + 1}/${courseStages.length}`; hudStageName.textContent = stage.name;
       hudStagePercent.textContent = `${levelProgress}%`; stageFill.style.width = `${levelProgress}%`;
+      hudFlow.textContent = `FLOW ${state.flow} · ×${flowMultiplier().toFixed(1)}`; hudFlow.dataset.active = String(state.flow > 0);
       hudSpeed.textContent = displaySpeed; hudGear.textContent = gear; revFill.style.width = `${Math.min(100, 28 + (displaySpeed % 85) / 85 * 72)}%`;
       hudScore.textContent = Math.floor(state.score); hudBest.textContent = Math.max(state.best, Math.floor(state.score)); hudLives.textContent = `${'●'.repeat(state.lives)}${'○'.repeat(3 - state.lives)}`;
     }
@@ -1070,7 +1090,7 @@
         course: { segment: course.segment, progress: +course.progress.toFixed(1), length: COURSE_LENGTH, centerX: +course.x.toFixed(2), elevation: +course.y.toFixed(2) },
         player: { type: 'light-cycle', x: +state.player.x.toFixed(1), y: state.player.y, courseLateral: +courseLateral.toFixed(2), steering: +normalizedSteering.toFixed(2), lean: +state.player.lean.toFixed(2), cockpitLean: +(-state.player.lean * 0.16).toFixed(3), horizonRoll: 0, jumpHeight: +(state.player.jumpHeight || 0).toFixed(1), jumpCooldown: +state.player.jumpCooldown.toFixed(2), invulnerable: +state.player.invulnerable.toFixed(2), trailPoints: state.energyTrail.length },
         level: { number: stage.index + 1, name: stage.name, distance: Math.floor(state.levelDistance), target: stage.length, startDistance: stage.startDistance, endDistance: stage.endDistance, roadBlend: +state.levelBlend.toFixed(2) }, roadCenterAtPlayer: +roadCenter(state.player.y).toFixed(1), obstacles: state.obstacles.map(o => ({ type: trafficTypes[o.type].name, lane: o.laneIndex, x: +o.x.toFixed(1), y: +o.y.toFixed(1), distanceAhead: +obstacleDistanceAhead(o).toFixed(1), rendered: Boolean(trafficMeshes.get(o)?.visible) })), score: Math.floor(state.score),
-        best: state.best, lives: state.lives, clears: state.clears, jumps: state.jumps, speed: Math.round(state.speed), countdown: { remaining: +state.countdownRemaining.toFixed(3), goRemaining: +state.countdownGoRemaining.toFixed(3), label: countdownValue.textContent, visible: !raceCountdown.hidden },
+        best: state.best, lives: state.lives, clears: state.clears, jumps: state.jumps, speed: Math.round(state.speed), flow: { chain: state.flow, multiplier: +flowMultiplier().toFixed(1) }, countdown: { remaining: +state.countdownRemaining.toFixed(3), goRemaining: +state.countdownGoRemaining.toFixed(3), label: countdownValue.textContent, visible: !raceCountdown.hidden },
         connected: cameraState === 'ready', input: cameraState === 'ready' ? 'camera' : 'keyboard', camera: { state: cameraState, roll: +cameraRoll.toFixed(2), pitch: +cameraPitch.toFixed(3), pitchDelta: +cameraPitchDelta.toFixed(3), tilt: +cameraTilt.toFixed(2), calibrationQuality: cameraPreview.dataset.quality, calibrationProgress: Math.min(100, Math.round(calibrationStableMs / 1200 * 100)) }, audio: { context: audioContext?.state || 'uninitialized', graphs: engineGraphCreations, muted: engineMuted, frequency: +engineFrequencyTarget.toFixed(1), gain: +engineGainTarget.toFixed(3), error: engineAudioError }, view: 'first-person', fullscreen: Boolean(document.fullscreenElement)
       });
     };

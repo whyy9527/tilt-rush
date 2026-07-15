@@ -73,6 +73,11 @@ Original prompt: 我们开始处理这个repo的issues，我非常兴奋，你�
 - 2026-07-16: Real Chromium stayed uninitialized and silent before Start, then ran one graph at 72 Hz/0.045 gain; speed 360 raised the target to 101.3 Hz/0.057, mute set gain to zero, restart reset pitch while preserving mute, and pagehide suspended the context with zero gain.
 - 2026-07-16: AudioContext instrumentation recorded one context, oscillator, filter, gain, oscillator start, and connection chain across three restarts; pagehide plus another Start produced one suspend and a second resume without constructing another graph. Mute used an immediate zero-value event, and its 40px control fit desktop plus remained reachable at 390x844 with no overflow.
 - 2026-07-16: A 19-snapshot comparison against `d6cc114` matched the full simulation and restart after excluding audio telemetry; the candidate completed all four stages with three lives, reached the bounded 160 Hz target, silenced at completion, and produced no console errors.
+- 2026-07-16: Issue 0027 added a consecutive clean-pass Flow chain, a single derived multiplier capped at ×3.0, multiplied continuous scoring, exactly-once off-screen pass registration, collision/restart reset, and matching HUD/text telemetry.
+- 2026-07-16: Deterministic flows verified one lane pass stayed at Flow 1 after another 500ms, a timed jump at 5.1 world units produced one clear and one pass with three lives, and a collision changed Flow 1/×1.1 to Flow 0/×1.0 before the next score frame.
+- 2026-07-16: HUD text matched telemetry at active and reset states; 390x844 retained `FLOW 1 · ×1.1` with zero overflow. A full run reached Flow 44 at the bounded ×3.0 multiplier, completed with three lives/four clears, and restarted at Flow 0.
+- 2026-07-16: A 19-snapshot comparison against `65fe9d9` matched the full simulation and restart after excluding the intended score/Flow fields; both browser runs produced no console errors.
+- 2026-07-16: Staged timing review made collision reset dominant for its whole simulation frame, preventing an unrelated same-frame off-screen pass from rebuilding Flow before the next score update.
 
 ## Next
 
@@ -88,3 +93,4 @@ Original prompt: 我们开始处理这个repo的issues，我非常兴奋，你�
 - Run staged work-review for issue 0024, then push and unlock the countdown issue.
 - Verify issue 0025 countdown timing, frozen simulation state, restart reuse, and desktop/mobile presentation before staged review.
 - Instrument and verify issue 0026 audio creation, speed mapping, mute persistence, restart reuse, real-context activation, and teardown before staged review.
+- Deterministically verify issue 0027 clean/jump passes, collision reset, multiplier scoring, restart, full completion, and HUD parity before staged review.

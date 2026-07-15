@@ -132,10 +132,45 @@
     const startButton = document.querySelector('#start');
     let cumulativeStageDistance = 0;
     const courseStages = [
-      { name: 'Ignition Mile', subtitle: 'Learn the lanes', length: 2600, curve: 'straight', interval: 1.3, pattern: [[1], [0], [2], [1], [0], [2]] },
-      { name: 'Dockside Sweep', subtitle: 'Read the long bend', length: 3600, curve: 'sweep', interval: 1.12, pattern: [[0], [2], [1], [0, 1], [2], [1]] },
-      { name: 'Neon Chicane', subtitle: 'Link the openings', length: 4400, curve: 'chicane', interval: .96, pattern: [[0, 1], [2], [1, 2], [0], [0, 2], [1]] },
-      { name: 'Skyway Hooks', subtitle: 'Commit, jump, recover', length: 5400, curve: 'hooks', interval: .84, pattern: [[0, 2], [1], [0, 1], [2], [1, 2], [0], [0, 2], [1]] }
+      {
+        name: 'Ignition Mile', subtitle: 'Learn the lanes', length: 2600, curve: 'straight', interval: 1.3, pattern: [[1], [0], [2], [1], [0], [2]],
+        centerline: [
+          { x: 0, y: 0, z: 0, segment: 'straight' },
+          { x: 0, y: 0, z: -35, segment: 'straight' },
+          { x: 0, y: 0, z: -55, segment: 'curve' },
+          { x: 1, y: 0, z: -60, segment: 'curve' }
+        ]
+      },
+      {
+        name: 'Dockside Sweep', subtitle: 'Read the long bend', length: 3600, curve: 'sweep', interval: 1.12, pattern: [[0], [2], [1], [0, 1], [2], [1]],
+        centerline: [
+          { x: 1, y: 0, z: -60, segment: 'curve' },
+          { x: 7, y: 0, z: -90, segment: 'curve' },
+          { x: 14, y: 0, z: -120, segment: 'curve' },
+          { x: 18, y: 0, z: -143, segment: 'curve' }
+        ]
+      },
+      {
+        name: 'Neon Chicane', subtitle: 'Link the openings', length: 4400, curve: 'chicane', interval: .96, pattern: [[0, 1], [2], [1, 2], [0], [0, 2], [1]],
+        centerline: [
+          { x: 18, y: 0, z: -143, segment: 'curve' },
+          { x: 14, y: 2, z: -170, segment: 'climb' },
+          { x: 4, y: 7, z: -210, segment: 'climb' },
+          { x: 12, y: 11, z: -245, segment: 'crest' }
+        ]
+      },
+      {
+        name: 'Skyway Hooks', subtitle: 'Commit, jump, recover', length: 5400, curve: 'hooks', interval: .84, pattern: [[0, 2], [1], [0, 1], [2], [1, 2], [0], [0, 2], [1]],
+        centerline: [
+          { x: 12, y: 11, z: -245, segment: 'crest' },
+          { x: 24, y: 12, z: -275, segment: 'crest' },
+          { x: 28, y: 12, z: -285, segment: 'descent' },
+          { x: 12, y: 7, z: -330, segment: 'descent' },
+          { x: 25, y: 1, z: -370, segment: 'descent' },
+          { x: 15, y: 0, z: -400, segment: 'descent' },
+          { x: 30, y: 0, z: -430, segment: 'descent' }
+        ]
+      }
     ].map((stage, index) => {
       const startDistance = cumulativeStageDistance;
       cumulativeStageDistance += stage.length;
@@ -188,37 +223,34 @@
     threeScene.add(hemisphereLight);
 
     const COURSE_LENGTH = 370;
-    const COURSE_GEOMETRY_LENGTH = 430;
     const COURSE_DISTANCE_SCALE = TOTAL_COURSE_DISTANCE / COURSE_LENGTH;
+    const courseCenterlineControls = courseStages.flatMap((stage, index) => stage.centerline.slice(index === 0 ? 0 : 1));
+    const COURSE_GEOMETRY_LENGTH = -courseCenterlineControls[courseCenterlineControls.length - 1].z;
+    const courseCenterline = new THREE.CatmullRomCurve3(
+      courseCenterlineControls.map(control => new THREE.Vector3(control.x, control.y, control.z)),
+      false,
+      'centripetal'
+    );
 
-    function smoothstep01(value) {
-      const t = Math.max(0, Math.min(1, value));
-      return t * t * (3 - 2 * t);
+    function courseSegmentAt(progress) {
+      let segment = courseCenterlineControls[0].segment;
+      for (const control of courseCenterlineControls) {
+        if (progress < -control.z) break;
+        segment = control.segment;
+      }
+      return segment;
     }
 
     function courseProfileAt(distance) {
       const progress = Math.max(0, Math.min(COURSE_GEOMETRY_LENGTH, distance));
-      const curve = smoothstep01((progress - 55) / 130);
-      let elevation = 0;
-      if (progress >= 140 && progress < 250) elevation = 12 * smoothstep01((progress - 140) / 110);
-      else if (progress < 285 && progress >= 250) elevation = 12;
-      else if (progress >= 285) elevation = 12 - 11 * smoothstep01((progress - 285) / 85);
-
-      let segment = 'straight';
-      if (progress >= 55 && progress < 170) segment = 'curve';
-      else if (progress >= 170 && progress < 250) segment = 'climb';
-      else if (progress >= 250 && progress < 285) segment = 'crest';
-      else if (progress >= 285) segment = 'descent';
-
-      return { progress, x: curve * 15, y: elevation, z: -progress, segment };
+      const point = courseCenterline.getPointAt(progress / COURSE_GEOMETRY_LENGTH);
+      return { progress, x: point.x, y: point.y, z: point.z, segment: courseSegmentAt(progress) };
     }
 
     function courseFrameAt(distance) {
       const profile = courseProfileAt(distance);
-      const behind = courseProfileAt(Math.max(0, profile.progress - 0.5));
-      const ahead = courseProfileAt(Math.min(COURSE_GEOMETRY_LENGTH, profile.progress + 0.5));
       const point = new THREE.Vector3(profile.x, profile.y, profile.z);
-      const tangent = new THREE.Vector3(ahead.x - behind.x, ahead.y - behind.y, ahead.z - behind.z).normalize();
+      const tangent = courseCenterline.getTangentAt(profile.progress / COURSE_GEOMETRY_LENGTH).normalize();
       const right = new THREE.Vector3(-tangent.z, 0, tangent.x).normalize();
       return { ...profile, point, tangent, right };
     }
@@ -768,8 +800,8 @@
       const stage = courseStages[state.level];
       return JSON.stringify({
         coordinateSystem: 'logical 1000x700; origin top-left; x right; y down', mode: state.mode,
-        version: 'v2', rendering: { renderer: 'three', camera: threeCamera.type, trafficMeshes: trafficRoot.children.length },
-        course: { segment: course.segment, progress: +course.progress.toFixed(1), length: COURSE_LENGTH, elevation: +course.y.toFixed(2) },
+        version: 'v2', rendering: { renderer: 'three', camera: threeCamera.type, trafficMeshes: trafficRoot.children.length, courseControls: courseCenterlineControls.length },
+        course: { segment: course.segment, progress: +course.progress.toFixed(1), length: COURSE_LENGTH, centerX: +course.x.toFixed(2), elevation: +course.y.toFixed(2) },
         player: { type: 'light-cycle', x: +state.player.x.toFixed(1), y: state.player.y, courseLateral: +courseLateral.toFixed(2), steering: +normalizedSteering.toFixed(2), lean: +state.player.lean.toFixed(2), cockpitLean: +(-state.player.lean * 0.16).toFixed(3), horizonRoll: 0, jumpHeight: +(state.player.jumpHeight || 0).toFixed(1), jumpCooldown: +state.player.jumpCooldown.toFixed(2), invulnerable: +state.player.invulnerable.toFixed(2), trailPoints: state.energyTrail.length },
         level: { number: stage.index + 1, name: stage.name, distance: Math.floor(state.levelDistance), target: stage.length, startDistance: stage.startDistance, endDistance: stage.endDistance, roadBlend: +state.levelBlend.toFixed(2) }, roadCenterAtPlayer: +roadCenter(state.player.y).toFixed(1), obstacles: state.obstacles.map(o => ({ type: trafficTypes[o.type].name, lane: o.laneIndex, x: +o.x.toFixed(1), y: +o.y.toFixed(1), distanceAhead: +obstacleDistanceAhead(o).toFixed(1), rendered: Boolean(trafficMeshes.get(o)?.visible) })), score: Math.floor(state.score),
         best: state.best, lives: state.lives, clears: state.clears, jumps: state.jumps, speed: Math.round(state.speed),

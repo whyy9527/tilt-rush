@@ -39,7 +39,8 @@
     button { min-height: 40px; padding: 8px 12px; border: 1px solid #ffffff55; border-radius: 9px; background: #ffffff18; color: inherit; font: inherit; font-size: 14px; font-weight: 700; white-space: nowrap; cursor: pointer; pointer-events: auto; }
     button:hover { background: #ffffff2b; transform: translateY(-1px); }
     button:disabled { cursor: default; opacity: .42; transform: none; }
-    .actions { display: flex; gap: 7px; }
+    .actions { display: flex; gap: 5px; }
+    #audio { padding-inline: 8px; }
     .input-switch { display: flex; gap: 3px; padding: 3px; border: 1px solid #ffffff2b; border-radius: 12px; background: #020b16a8; }
     .input-switch button { min-height: 34px; border-color: transparent; background: transparent; }
     .input-switch button[aria-pressed="true"] { border-color: #ff764d80; background: #ff542e2b; color: #ffb197; box-shadow: inset 0 0 0 1px #ff764d30; }
@@ -66,7 +67,7 @@
     .race-countdown[hidden] { display: none; }
     #countdown-value { display: grid; width: clamp(116px, 18vw, 190px); aspect-ratio: 1; place-items: center; border: 2px solid #ff815b99; border-radius: 50%; background: radial-gradient(circle, #182a3de8 0 42%, #07111ecf 72%); box-shadow: 0 0 0 8px #ff542e14, 0 0 48px #ff542e59, inset 0 0 36px #050912; color: #fff4ed; font-size: clamp(70px, 12vw, 132px); font-weight: 900; font-variant-numeric: tabular-nums; line-height: 1; text-shadow: 0 0 24px #ff5b36; }
     .race-countdown[data-phase="go"] #countdown-value { width: clamp(150px, 23vw, 240px); aspect-ratio: 1.4; border-radius: 28px 8px; color: #ffb092; font-size: clamp(52px, 9vw, 96px); }
-    @media (max-width: 760px) { .topbar { inset: 10px 10px auto; gap: 8px; } .race-hud { width: 58vw; } .speed-hud { width: 37vw; } #hud-speed { font-size: 38px; } .actions > button { display: none; } .input-switch button { padding-inline: 8px; } .race-heading { padding: 10px 12px 7px; } #hud-stage-name { font-size: 16px; } }
+    @media (max-width: 760px) { .topbar { inset: 10px 10px auto; gap: 8px; } .race-hud { width: 58vw; } .speed-hud { width: 37vw; } #hud-speed { font-size: 38px; } .actions > button { display: none; } .actions > #audio { display: block; } .input-switch button { padding-inline: 8px; } .race-heading { padding: 10px 12px 7px; } #hud-stage-name { font-size: 16px; } }
   </style>
   <script type="importmap">
     { "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.185.1/build/three.module.js" } }
@@ -87,7 +88,7 @@
     <section class="panel race-hud" aria-label="Race objective and controls">
       <div class="race-heading"><div><span class="eyebrow" id="hud-stage-index">Night run · Stage 1/4</span><strong id="hud-stage-name">Ignition Mile</strong></div><span id="hud-stage-percent">0%</span></div>
       <div class="stage-track"><div id="stage-fill"></div></div>
-      <div class="control-deck"><span id="status">Camera off · keyboard ready</span><div class="actions"><button id="camera" type="button" aria-pressed="false">Enable camera</button><button id="center" type="button" disabled>Recenter</button><button id="fullscreen" type="button">Full screen</button></div></div>
+      <div class="control-deck"><span id="status">Camera off · keyboard ready</span><div class="actions"><button id="camera" type="button" aria-pressed="false">Enable camera</button><button id="center" type="button" disabled>Recenter</button><button id="audio" type="button" aria-label="Mute engine" aria-pressed="false">Mute</button><button id="fullscreen" type="button">Full screen</button></div></div>
     </section>
     <section class="panel speed-hud" id="telemetry" aria-label="Speed and race stats">
       <div class="speed-top"><span id="hud-speed">260</span><span class="speed-meta">KM/H<br><b id="hud-gear">3</b> GEAR</span></div>
@@ -110,6 +111,7 @@
     const threeCanvas = document.querySelector('#three-game');
     const status = document.querySelector('#status');
     const cameraButton = document.querySelector('#camera');
+    const audioButton = document.querySelector('#audio');
     const cameraVideo = document.querySelector('#camera-feed');
     const cameraOverlay = document.querySelector('#camera-calibration');
     const calibrationTitle = document.querySelector('#calibration-title');
@@ -215,6 +217,20 @@
     let testingMode = false;
     let lastFrame = performance.now();
     let normalizedSteering = 0;
+    let audioContext;
+    let engineOscillator;
+    let engineFilter;
+    let engineGain;
+    let engineMuted = false;
+    let engineGraphCreations = 0;
+    let engineFrequencyTarget = 72;
+    let engineGainTarget = 0;
+    let engineAppliedFrequency = -1;
+    let engineAppliedFilter = -1;
+    let engineAppliedGain = -1;
+    let engineAudioError = '';
+    let engineAudioUnavailable = false;
+    let engineAudioSuspendedForPage = false;
 
     const threeRenderer = new THREE.WebGLRenderer({ canvas: threeCanvas, antialias: true });
     threeRenderer.setPixelRatio(Math.min(devicePixelRatio, 2));
@@ -560,6 +576,8 @@
 
     const COUNTDOWN_SECONDS = 3;
     const GO_DISPLAY_SECONDS = 0.65;
+    const ENGINE_MIN_SPEED = 260;
+    const ENGINE_MAX_SPEED = 560;
     const state = {
       mode: 'ready', score: 0, best: Number(localStorage.getItem('tilt-rush-v2-best') || 0), lives: 3, clears: 0, jumps: 0,
       elapsed: 0, speed: 260, spawnTimer: 1.1, spawnIndex: 0, roadOffset: 0, level: 0, previousLevel: 0, levelBlend: 1, levelDistance: 0, totalDistance: 0, levelFlash: 0, countdownRemaining: 0, countdownGoRemaining: 0,
@@ -581,7 +599,104 @@
       Object.assign(state.player, { x: 500, y: 590, lean: 0, jumpRemaining: 0, jumpHeight: 0, jumpCooldown: 0, invulnerable: 0, jumpPulse: 0 });
       normalizedSteering = 0;
       menu.hidden = true;
+      activateEngineAudio();
       render();
+    }
+
+    function ensureEngineGraph() {
+      if (audioContext) return true;
+      if (engineAudioUnavailable) return false;
+      const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+      if (!AudioContextClass) {
+        engineAudioUnavailable = true;
+        engineAudioError = 'unsupported';
+        audioButton.disabled = true;
+        audioButton.textContent = 'No audio';
+        return false;
+      }
+      let context;
+      try {
+        context = new AudioContextClass();
+        const oscillator = context.createOscillator();
+        const filter = context.createBiquadFilter();
+        const gain = context.createGain();
+        oscillator.type = 'sawtooth';
+        filter.type = 'lowpass';
+        filter.Q.value = 0.8;
+        gain.gain.value = 0;
+        oscillator.connect(filter);
+        filter.connect(gain);
+        gain.connect(context.destination);
+        oscillator.start();
+        audioContext = context;
+        engineOscillator = oscillator;
+        engineFilter = filter;
+        engineGain = gain;
+        engineGraphCreations += 1;
+        return true;
+      } catch (error) {
+        context?.close().catch(() => {});
+        engineAudioUnavailable = true;
+        engineAudioError = error?.name || 'initialization-failed';
+        audioButton.disabled = true;
+        audioButton.textContent = 'No audio';
+        return false;
+      }
+    }
+
+    function syncEngineAudio() {
+      const speedRatio = Math.max(0, Math.min(1, (state.speed - ENGINE_MIN_SPEED) / (ENGINE_MAX_SPEED - ENGINE_MIN_SPEED)));
+      engineFrequencyTarget = 72 + speedRatio * 88;
+      const engineActive = (state.mode === 'countdown' || state.mode === 'playing') && audioContext?.state === 'running' && !engineAudioSuspendedForPage;
+      engineGainTarget = engineActive && !engineMuted ? 0.045 + speedRatio * 0.035 : 0;
+      if (!audioContext || !engineOscillator || !engineFilter || !engineGain || audioContext.state === 'closed') return;
+      const now = audioContext.currentTime;
+      const filterTarget = 420 + speedRatio * 480;
+      if (Math.abs(engineFrequencyTarget - engineAppliedFrequency) >= 0.25) {
+        engineOscillator.frequency.setTargetAtTime(engineFrequencyTarget, now, 0.08);
+        engineAppliedFrequency = engineFrequencyTarget;
+      }
+      if (Math.abs(filterTarget - engineAppliedFilter) >= 1) {
+        engineFilter.frequency.setTargetAtTime(filterTarget, now, 0.1);
+        engineAppliedFilter = filterTarget;
+      }
+      if (Math.abs(engineGainTarget - engineAppliedGain) >= 0.0005) {
+        engineGain.gain.setTargetAtTime(engineGainTarget, now, 0.045);
+        engineAppliedGain = engineGainTarget;
+      }
+    }
+
+    function activateEngineAudio() {
+      if (!ensureEngineGraph()) return;
+      engineAudioError = '';
+      engineAudioSuspendedForPage = false;
+      if (audioContext.state !== 'running' && audioContext.state !== 'closed') {
+        audioContext.resume().then(syncEngineAudio).catch(error => { engineAudioError = error?.name || 'resume-failed'; });
+      }
+      syncEngineAudio();
+    }
+
+    function toggleEngineMute() {
+      engineMuted = !engineMuted;
+      audioButton.setAttribute('aria-pressed', String(engineMuted));
+      audioButton.setAttribute('aria-label', engineMuted ? 'Unmute engine' : 'Mute engine');
+      audioButton.textContent = engineMuted ? 'Unmute' : 'Mute';
+      if (engineMuted && audioContext && engineGain && audioContext.state !== 'closed') {
+        engineGainTarget = 0;
+        engineGain.gain.setValueAtTime(0, audioContext.currentTime);
+        engineAppliedGain = 0;
+      } else {
+        syncEngineAudio();
+      }
+    }
+
+    function suspendEngineAudio() {
+      if (!audioContext || audioContext.state === 'closed') return;
+      engineAudioSuspendedForPage = true;
+      engineGainTarget = 0;
+      engineGain.gain.setValueAtTime(0, audioContext.currentTime);
+      engineAppliedGain = -1;
+      audioContext.suspend().catch(() => {});
     }
 
     function finishGame() {
@@ -759,6 +874,7 @@
       raceCountdown.hidden = !countdownLabel;
       raceCountdown.dataset.phase = state.mode === 'countdown' ? 'countdown' : 'go';
       if (countdownValue.textContent !== countdownLabel) countdownValue.textContent = countdownLabel;
+      syncEngineAudio();
       syncTrafficMeshes();
       threeRenderer.render(threeScene, threeCamera);
       updateHud();
@@ -918,6 +1034,7 @@
     }
 
     cameraButton.addEventListener('click', toggleCamera);
+    audioButton.addEventListener('click', toggleEngineMute);
     cameraResumeButton.addEventListener('click', async () => {
       if (cameraState !== 'waiting' || !cameraStream) return;
       const requestId = cameraRequestId;
@@ -926,6 +1043,7 @@
     });
     cameraCancelButton.addEventListener('click', () => { disableCamera(); updateInputControls(); });
     addEventListener('pagehide', stopCamera);
+    addEventListener('pagehide', suspendEngineAudio);
     enableCamera();
 
     centerButton.addEventListener('click', () => {
@@ -953,7 +1071,7 @@
         player: { type: 'light-cycle', x: +state.player.x.toFixed(1), y: state.player.y, courseLateral: +courseLateral.toFixed(2), steering: +normalizedSteering.toFixed(2), lean: +state.player.lean.toFixed(2), cockpitLean: +(-state.player.lean * 0.16).toFixed(3), horizonRoll: 0, jumpHeight: +(state.player.jumpHeight || 0).toFixed(1), jumpCooldown: +state.player.jumpCooldown.toFixed(2), invulnerable: +state.player.invulnerable.toFixed(2), trailPoints: state.energyTrail.length },
         level: { number: stage.index + 1, name: stage.name, distance: Math.floor(state.levelDistance), target: stage.length, startDistance: stage.startDistance, endDistance: stage.endDistance, roadBlend: +state.levelBlend.toFixed(2) }, roadCenterAtPlayer: +roadCenter(state.player.y).toFixed(1), obstacles: state.obstacles.map(o => ({ type: trafficTypes[o.type].name, lane: o.laneIndex, x: +o.x.toFixed(1), y: +o.y.toFixed(1), distanceAhead: +obstacleDistanceAhead(o).toFixed(1), rendered: Boolean(trafficMeshes.get(o)?.visible) })), score: Math.floor(state.score),
         best: state.best, lives: state.lives, clears: state.clears, jumps: state.jumps, speed: Math.round(state.speed), countdown: { remaining: +state.countdownRemaining.toFixed(3), goRemaining: +state.countdownGoRemaining.toFixed(3), label: countdownValue.textContent, visible: !raceCountdown.hidden },
-        connected: cameraState === 'ready', input: cameraState === 'ready' ? 'camera' : 'keyboard', camera: { state: cameraState, roll: +cameraRoll.toFixed(2), pitch: +cameraPitch.toFixed(3), pitchDelta: +cameraPitchDelta.toFixed(3), tilt: +cameraTilt.toFixed(2), calibrationQuality: cameraPreview.dataset.quality, calibrationProgress: Math.min(100, Math.round(calibrationStableMs / 1200 * 100)) }, view: 'first-person', fullscreen: Boolean(document.fullscreenElement)
+        connected: cameraState === 'ready', input: cameraState === 'ready' ? 'camera' : 'keyboard', camera: { state: cameraState, roll: +cameraRoll.toFixed(2), pitch: +cameraPitch.toFixed(3), pitchDelta: +cameraPitchDelta.toFixed(3), tilt: +cameraTilt.toFixed(2), calibrationQuality: cameraPreview.dataset.quality, calibrationProgress: Math.min(100, Math.round(calibrationStableMs / 1200 * 100)) }, audio: { context: audioContext?.state || 'uninitialized', graphs: engineGraphCreations, muted: engineMuted, frequency: +engineFrequencyTarget.toFixed(1), gain: +engineGainTarget.toFixed(3), error: engineAudioError }, view: 'first-person', fullscreen: Boolean(document.fullscreenElement)
       });
     };
     window.advanceTime = ms => {

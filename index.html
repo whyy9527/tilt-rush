@@ -62,6 +62,10 @@
     .race-stat { color: #8f99a7; font-size: 9px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; }
     .race-stat strong { display: block; margin-top: 2px; color: #fff; font-size: 15px; letter-spacing: 0; }
     #hud-lives { color: #ff765c; letter-spacing: .08em; }
+    .race-countdown { position: fixed; z-index: 1; inset: 0; display: grid; place-items: center; pointer-events: none; }
+    .race-countdown[hidden] { display: none; }
+    #countdown-value { display: grid; width: clamp(116px, 18vw, 190px); aspect-ratio: 1; place-items: center; border: 2px solid #ff815b99; border-radius: 50%; background: radial-gradient(circle, #182a3de8 0 42%, #07111ecf 72%); box-shadow: 0 0 0 8px #ff542e14, 0 0 48px #ff542e59, inset 0 0 36px #050912; color: #fff4ed; font-size: clamp(70px, 12vw, 132px); font-weight: 900; font-variant-numeric: tabular-nums; line-height: 1; text-shadow: 0 0 24px #ff5b36; }
+    .race-countdown[data-phase="go"] #countdown-value { width: clamp(150px, 23vw, 240px); aspect-ratio: 1.4; border-radius: 28px 8px; color: #ffb092; font-size: clamp(52px, 9vw, 96px); }
     @media (max-width: 760px) { .topbar { inset: 10px 10px auto; gap: 8px; } .race-hud { width: 58vw; } .speed-hud { width: 37vw; } #hud-speed { font-size: 38px; } .actions > button { display: none; } .input-switch button { padding-inline: 8px; } .race-heading { padding: 10px 12px 7px; } #hud-stage-name { font-size: 16px; } }
   </style>
   <script type="importmap">
@@ -91,6 +95,7 @@
       <div class="race-stats"><span class="race-stat">Score<strong id="hud-score">0</strong></span><span class="race-stat">Best<strong id="hud-best">0</strong></span><span class="race-stat">Integrity<strong id="hud-lives">●●●</strong></span></div>
     </section>
   </div>
+  <div class="race-countdown" id="race-countdown" data-phase="countdown" role="status" aria-live="assertive" hidden><span id="countdown-value">3</span></div>
   <div class="menu" id="menu">
     <div class="card">
       <h1>Tilt Rush V2</h1>
@@ -125,6 +130,8 @@
     const hudScore = document.querySelector('#hud-score');
     const hudBest = document.querySelector('#hud-best');
     const hudLives = document.querySelector('#hud-lives');
+    const raceCountdown = document.querySelector('#race-countdown');
+    const countdownValue = document.querySelector('#countdown-value');
     const centerButton = document.querySelector('#center');
     const fullscreenButton = document.querySelector('#fullscreen');
     const menu = document.querySelector('#menu');
@@ -551,9 +558,11 @@
       }
     }
 
+    const COUNTDOWN_SECONDS = 3;
+    const GO_DISPLAY_SECONDS = 0.65;
     const state = {
       mode: 'ready', score: 0, best: Number(localStorage.getItem('tilt-rush-v2-best') || 0), lives: 3, clears: 0, jumps: 0,
-      elapsed: 0, speed: 260, spawnTimer: 1.1, spawnIndex: 0, roadOffset: 0, level: 0, previousLevel: 0, levelBlend: 1, levelDistance: 0, totalDistance: 0, levelFlash: 0,
+      elapsed: 0, speed: 260, spawnTimer: 1.1, spawnIndex: 0, roadOffset: 0, level: 0, previousLevel: 0, levelBlend: 1, levelDistance: 0, totalDistance: 0, levelFlash: 0, countdownRemaining: 0, countdownGoRemaining: 0,
       player: { x: 500, y: 590, width: 30, height: 104, lean: 0, jumpRemaining: 0, jumpCooldown: 0, invulnerable: 0, jumpPulse: 0 }, obstacles: [], particles: [], energyTrail: [], trailTimer: 0
     };
 
@@ -568,7 +577,7 @@
 
     function resetGame() {
       for (const obstacle of state.obstacles) removeTrafficMesh(obstacle);
-      Object.assign(state, { mode: 'playing', score: 0, lives: 3, clears: 0, jumps: 0, elapsed: 0, speed: 260, spawnTimer: 1.1, spawnIndex: 0, roadOffset: 0, level: 0, previousLevel: 0, levelBlend: 1, levelDistance: 0, totalDistance: 0, levelFlash: 2.2, obstacles: [], particles: [], energyTrail: [], trailTimer: 0 });
+      Object.assign(state, { mode: 'countdown', score: 0, lives: 3, clears: 0, jumps: 0, elapsed: 0, speed: 260, spawnTimer: 1.1, spawnIndex: 0, roadOffset: 0, level: 0, previousLevel: 0, levelBlend: 1, levelDistance: 0, totalDistance: 0, levelFlash: 2.2, countdownRemaining: COUNTDOWN_SECONDS, countdownGoRemaining: 0, obstacles: [], particles: [], energyTrail: [], trailTimer: 0 });
       Object.assign(state.player, { x: 500, y: 590, lean: 0, jumpRemaining: 0, jumpHeight: 0, jumpCooldown: 0, invulnerable: 0, jumpPulse: 0 });
       normalizedSteering = 0;
       menu.hidden = true;
@@ -645,7 +654,17 @@
     }
 
     function update(dt) {
+      if (state.mode === 'countdown') {
+        state.countdownRemaining = Math.max(0, state.countdownRemaining - dt);
+        if (state.countdownRemaining <= 1 / 120) {
+          state.countdownRemaining = 0;
+          state.countdownGoRemaining = GO_DISPLAY_SECONDS;
+          state.mode = 'playing';
+        }
+        return;
+      }
       if (state.mode !== 'playing') return;
+      state.countdownGoRemaining = Math.max(0, state.countdownGoRemaining - dt);
       state.elapsed += dt;
       state.score += dt * (12 + state.speed / 55);
       state.speed = Math.min(560, 260 + state.elapsed * 10);
@@ -736,6 +755,10 @@
       threeCamera.up.set(0, 1, 0);
       threeCamera.lookAt(target);
       cockpit.rotation.z = -state.player.lean * 0.16;
+      const countdownLabel = state.mode === 'countdown' ? String(Math.max(1, Math.ceil(state.countdownRemaining - 0.001))) : state.countdownGoRemaining > 0 ? 'GO' : '';
+      raceCountdown.hidden = !countdownLabel;
+      raceCountdown.dataset.phase = state.mode === 'countdown' ? 'countdown' : 'go';
+      if (countdownValue.textContent !== countdownLabel) countdownValue.textContent = countdownLabel;
       syncTrafficMeshes();
       threeRenderer.render(threeScene, threeCamera);
       updateHud();
@@ -913,7 +936,7 @@
     fullscreenButton.addEventListener('click', () => document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen());
     addEventListener('keydown', event => {
       keys.add(event.key);
-      if (event.key === 'Enter' && state.mode !== 'playing') resetGame();
+      if (event.key === 'Enter' && state.mode !== 'playing' && state.mode !== 'countdown') resetGame();
       if (event.code === 'Space') { event.preventDefault(); jump(); }
       if (event.key.toLowerCase() === 'f') fullscreenButton.click();
     });
@@ -929,7 +952,7 @@
         course: { segment: course.segment, progress: +course.progress.toFixed(1), length: COURSE_LENGTH, centerX: +course.x.toFixed(2), elevation: +course.y.toFixed(2) },
         player: { type: 'light-cycle', x: +state.player.x.toFixed(1), y: state.player.y, courseLateral: +courseLateral.toFixed(2), steering: +normalizedSteering.toFixed(2), lean: +state.player.lean.toFixed(2), cockpitLean: +(-state.player.lean * 0.16).toFixed(3), horizonRoll: 0, jumpHeight: +(state.player.jumpHeight || 0).toFixed(1), jumpCooldown: +state.player.jumpCooldown.toFixed(2), invulnerable: +state.player.invulnerable.toFixed(2), trailPoints: state.energyTrail.length },
         level: { number: stage.index + 1, name: stage.name, distance: Math.floor(state.levelDistance), target: stage.length, startDistance: stage.startDistance, endDistance: stage.endDistance, roadBlend: +state.levelBlend.toFixed(2) }, roadCenterAtPlayer: +roadCenter(state.player.y).toFixed(1), obstacles: state.obstacles.map(o => ({ type: trafficTypes[o.type].name, lane: o.laneIndex, x: +o.x.toFixed(1), y: +o.y.toFixed(1), distanceAhead: +obstacleDistanceAhead(o).toFixed(1), rendered: Boolean(trafficMeshes.get(o)?.visible) })), score: Math.floor(state.score),
-        best: state.best, lives: state.lives, clears: state.clears, jumps: state.jumps, speed: Math.round(state.speed),
+        best: state.best, lives: state.lives, clears: state.clears, jumps: state.jumps, speed: Math.round(state.speed), countdown: { remaining: +state.countdownRemaining.toFixed(3), goRemaining: +state.countdownGoRemaining.toFixed(3), label: countdownValue.textContent, visible: !raceCountdown.hidden },
         connected: cameraState === 'ready', input: cameraState === 'ready' ? 'camera' : 'keyboard', camera: { state: cameraState, roll: +cameraRoll.toFixed(2), pitch: +cameraPitch.toFixed(3), pitchDelta: +cameraPitchDelta.toFixed(3), tilt: +cameraTilt.toFixed(2), calibrationQuality: cameraPreview.dataset.quality, calibrationProgress: Math.min(100, Math.round(calibrationStableMs / 1200 * 100)) }, view: 'first-person', fullscreen: Boolean(document.fullscreenElement)
       });
     };

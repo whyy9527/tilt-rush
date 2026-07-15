@@ -259,8 +259,11 @@
       return Math.min(COURSE_LENGTH, state.totalDistance / COURSE_DISTANCE_SCALE);
     }
 
+    const ROAD_TEXTURE_REPEAT_LENGTH = 15;
+
     function createRoadGeometry() {
       const positions = [];
+      const uvs = [];
       const indices = [];
       const step = 2;
       for (let distance = 0; distance <= COURSE_GEOMETRY_LENGTH; distance += step) {
@@ -268,6 +271,8 @@
         const left = frame.point.clone().addScaledVector(frame.right, -5);
         const right = frame.point.clone().addScaledVector(frame.right, 5);
         positions.push(left.x, left.y, left.z, right.x, right.y, right.z);
+        const textureV = distance / ROAD_TEXTURE_REPEAT_LENGTH;
+        uvs.push(0, textureV, 1, textureV);
       }
       const rowCount = COURSE_GEOMETRY_LENGTH / step + 1;
       for (let row = 0; row < rowCount - 1; row++) {
@@ -279,14 +284,20 @@
       }
       const geometry = new THREE.BufferGeometry();
       geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+      geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
       geometry.setIndex(indices);
       geometry.computeVertexNormals();
       return geometry;
     }
 
+    const wetAsphaltTexture = new THREE.TextureLoader().load('assets/wet-asphalt-v1.webp');
+    wetAsphaltTexture.wrapS = THREE.RepeatWrapping;
+    wetAsphaltTexture.wrapT = THREE.RepeatWrapping;
+    wetAsphaltTexture.colorSpace = THREE.SRGBColorSpace;
+    wetAsphaltTexture.anisotropy = Math.min(8, threeRenderer.capabilities.getMaxAnisotropy());
     const road = new THREE.Mesh(
       createRoadGeometry(),
-      new THREE.MeshStandardMaterial({ color: 0x292d36, roughness: 0.92 })
+      new THREE.MeshStandardMaterial({ map: wetAsphaltTexture, color: 0xffffff, roughness: 0.9 })
     );
     threeScene.add(road);
 
@@ -800,7 +811,7 @@
       const stage = courseStages[state.level];
       return JSON.stringify({
         coordinateSystem: 'logical 1000x700; origin top-left; x right; y down', mode: state.mode,
-        version: 'v2', rendering: { renderer: 'three', camera: threeCamera.type, trafficMeshes: trafficRoot.children.length, courseControls: courseCenterlineControls.length },
+        version: 'v2', rendering: { renderer: 'three', camera: threeCamera.type, trafficMeshes: trafficRoot.children.length, courseControls: courseCenterlineControls.length, roadSurface: 'wet-asphalt-v1', roadUvs: road.geometry.getAttribute('uv').count },
         course: { segment: course.segment, progress: +course.progress.toFixed(1), length: COURSE_LENGTH, centerX: +course.x.toFixed(2), elevation: +course.y.toFixed(2) },
         player: { type: 'light-cycle', x: +state.player.x.toFixed(1), y: state.player.y, courseLateral: +courseLateral.toFixed(2), steering: +normalizedSteering.toFixed(2), lean: +state.player.lean.toFixed(2), cockpitLean: +(-state.player.lean * 0.16).toFixed(3), horizonRoll: 0, jumpHeight: +(state.player.jumpHeight || 0).toFixed(1), jumpCooldown: +state.player.jumpCooldown.toFixed(2), invulnerable: +state.player.invulnerable.toFixed(2), trailPoints: state.energyTrail.length },
         level: { number: stage.index + 1, name: stage.name, distance: Math.floor(state.levelDistance), target: stage.length, startDistance: stage.startDistance, endDistance: stage.endDistance, roadBlend: +state.levelBlend.toFixed(2) }, roadCenterAtPlayer: +roadCenter(state.player.y).toFixed(1), obstacles: state.obstacles.map(o => ({ type: trafficTypes[o.type].name, lane: o.laneIndex, x: +o.x.toFixed(1), y: +o.y.toFixed(1), distanceAhead: +obstacleDistanceAhead(o).toFixed(1), rendered: Boolean(trafficMeshes.get(o)?.visible) })), score: Math.floor(state.score),

@@ -197,10 +197,10 @@
       return courseStages.find(stage => clampedDistance < stage.endDistance);
     }
     const trafficTypes = [
-      { name: 'Model 3', src: 'assets/traffic/model-3.png', width: 54, height: 112, color: 0x2553a6, worldWidth: 1.7, worldHeight: 0.62, worldLength: 3.8 },
-      { name: 'Model Y', src: 'assets/traffic/model-y.png', width: 58, height: 112, color: 0xe3e7ed, worldWidth: 1.82, worldHeight: 0.78, worldLength: 4.05 },
-      { name: 'Cybercab', src: 'assets/traffic/cybercab.png', width: 54, height: 116, color: 0xe5a832, worldWidth: 1.78, worldHeight: 0.66, worldLength: 3.9 },
-      { name: 'Cybertruck', src: 'assets/traffic/cybertruck.png', width: 58, height: 126, color: 0x9ca3ad, worldWidth: 1.9, worldHeight: 0.82, worldLength: 4.5 }
+      { name: 'Model 3', silhouette: 'low-wedge', accent: 0x4cc9ff, src: 'assets/traffic/model-3.png', width: 54, height: 112, color: 0x2553a6, worldWidth: 1.7, worldHeight: 0.62, worldLength: 3.8 },
+      { name: 'Model Y', silhouette: 'high-roof', accent: 0x8dffb5, src: 'assets/traffic/model-y.png', width: 58, height: 112, color: 0xe3e7ed, worldWidth: 1.82, worldHeight: 0.78, worldLength: 4.05 },
+      { name: 'Cybercab', silhouette: 'rounded-pod', accent: 0xffc23f, src: 'assets/traffic/cybercab.png', width: 54, height: 116, color: 0xe5a832, worldWidth: 1.78, worldHeight: 0.66, worldLength: 3.9 },
+      { name: 'Cybertruck', silhouette: 'open-bed', accent: 0xff4f6d, src: 'assets/traffic/cybertruck.png', width: 58, height: 126, color: 0x9ca3ad, worldWidth: 1.9, worldHeight: 0.82, worldLength: 4.5 }
     ];
     const keys = new Set();
     let cameraRequestId = 0;
@@ -510,42 +510,72 @@
     threeScene.add(trafficRoot);
     const trafficMeshes = new Map();
     const trafficBodyGeometry = new THREE.BoxGeometry(1, 1, 1);
-    const trafficCabinGeometry = new THREE.BoxGeometry(1, 1, 1);
+    const trafficWedgeGeometry = new THREE.CylinderGeometry(0.68, 0.86, 1, 4, 1, false, Math.PI / 4);
+    const trafficPodGeometry = new THREE.SphereGeometry(0.5, 14, 8);
     const trafficWheelGeometry = new THREE.CylinderGeometry(0.3, 0.3, 0.2, 12);
-    const trafficLightGeometry = new THREE.BoxGeometry(0.34, 0.13, 0.07);
     const trafficBodyMaterials = trafficTypes.map(type => new THREE.MeshStandardMaterial({ color: type.color, roughness: 0.48, metalness: 0.38 }));
+    const trafficAccentMaterials = trafficTypes.map(type => new THREE.MeshStandardMaterial({ color: type.accent, emissive: type.accent, emissiveIntensity: 3.4, roughness: 0.28 }));
     const trafficCabinMaterial = new THREE.MeshStandardMaterial({ color: 0x101826, roughness: 0.24, metalness: 0.52 });
     const trafficWheelMaterial = new THREE.MeshStandardMaterial({ color: 0x090b0f, roughness: 0.92 });
-    const trafficTailMaterial = new THREE.MeshStandardMaterial({ color: 0xff3028, emissive: 0xff1d16, emissiveIntensity: 3.2 });
     const trafficForward = new THREE.Vector3(0, 0, -1);
     const TRAFFIC_WORLD_DISTANCE_PER_LOGICAL = 1 / COURSE_DISTANCE_SCALE;
 
-    function createTrafficMesh(typeIndex) {
+    function addTrafficPart(group, geometry, material, scale, position, rotation = [0, 0, 0]) {
+      const part = new THREE.Mesh(geometry, material);
+      part.scale.set(...scale);
+      part.position.set(...position);
+      part.rotation.set(...rotation);
+      group.add(part);
+    }
+
+    function buildTrafficTemplate(typeIndex) {
       const type = trafficTypes[typeIndex];
       const vehicle = new THREE.Group();
-      vehicle.name = `traffic-${type.name.toLowerCase().replaceAll(' ', '-')}`;
+      vehicle.name = `traffic-template-${type.name.toLowerCase().replaceAll(' ', '-')}`;
+      vehicle.userData.trafficType = type.name;
+      vehicle.userData.silhouette = type.silhouette;
 
-      const body = new THREE.Mesh(trafficBodyGeometry, trafficBodyMaterials[typeIndex]);
-      body.scale.set(type.worldWidth, type.worldHeight, type.worldLength);
-      body.position.y = 0.34 + type.worldHeight / 2;
-      vehicle.add(body);
-
-      const cabin = new THREE.Mesh(trafficCabinGeometry, trafficCabinMaterial);
-      cabin.scale.set(type.worldWidth * 0.76, type.worldHeight * 0.72, type.worldLength * 0.46);
-      cabin.position.set(0, 0.34 + type.worldHeight * 1.22, -type.worldLength * 0.08);
-      vehicle.add(cabin);
+      if (type.silhouette === 'low-wedge') {
+        addTrafficPart(vehicle, trafficBodyGeometry, trafficBodyMaterials[typeIndex], [type.worldWidth, type.worldHeight, type.worldLength], [0, 0.34 + type.worldHeight / 2, 0]);
+        addTrafficPart(vehicle, trafficWedgeGeometry, trafficCabinMaterial, [type.worldWidth * 0.78, type.worldHeight * 0.72, type.worldLength * 0.52], [0, 0.34 + type.worldHeight * 1.18, -type.worldLength * 0.08]);
+        addTrafficPart(vehicle, trafficBodyGeometry, trafficAccentMaterials[typeIndex], [type.worldWidth * 0.7, 0.09, 0.07], [0, 0.51 + type.worldHeight * 0.55, type.worldLength / 2 + 0.04]);
+      } else if (type.silhouette === 'high-roof') {
+        addTrafficPart(vehicle, trafficBodyGeometry, trafficBodyMaterials[typeIndex], [type.worldWidth, type.worldHeight, type.worldLength], [0, 0.34 + type.worldHeight / 2, 0]);
+        addTrafficPart(vehicle, trafficBodyGeometry, trafficCabinMaterial, [type.worldWidth * 0.82, type.worldHeight * 0.94, type.worldLength * 0.58], [0, 0.43 + type.worldHeight * 1.26, -type.worldLength * 0.06]);
+        for (const side of [-1, 1]) {
+          addTrafficPart(vehicle, trafficBodyGeometry, trafficBodyMaterials[typeIndex], [0.07, 0.08, type.worldLength * 0.54], [side * type.worldWidth * 0.34, 0.5 + type.worldHeight * 1.73, -type.worldLength * 0.06]);
+          addTrafficPart(vehicle, trafficBodyGeometry, trafficAccentMaterials[typeIndex], [0.11, type.worldHeight * 0.62, 0.08], [side * type.worldWidth * 0.3, 0.48 + type.worldHeight * 0.7, type.worldLength / 2 + 0.05]);
+        }
+      } else if (type.silhouette === 'rounded-pod') {
+        addTrafficPart(vehicle, trafficBodyGeometry, trafficBodyMaterials[typeIndex], [type.worldWidth, type.worldHeight * 0.72, type.worldLength], [0, 0.34 + type.worldHeight * 0.36, 0]);
+        addTrafficPart(vehicle, trafficPodGeometry, trafficCabinMaterial, [type.worldWidth * 0.9, type.worldHeight * 1.02, type.worldLength * 0.68], [0, 0.42 + type.worldHeight * 1.02, -type.worldLength * 0.08]);
+        addTrafficPart(vehicle, trafficBodyGeometry, trafficAccentMaterials[typeIndex], [type.worldWidth * 0.78, 0.12, 0.08], [0, 0.5 + type.worldHeight * 0.48, type.worldLength / 2 + 0.05], [0, 0, -0.08]);
+      } else if (type.silhouette === 'open-bed') {
+        addTrafficPart(vehicle, trafficBodyGeometry, trafficBodyMaterials[typeIndex], [type.worldWidth, type.worldHeight * 0.62, type.worldLength], [0, 0.34 + type.worldHeight * 0.31, 0]);
+        addTrafficPart(vehicle, trafficWedgeGeometry, trafficCabinMaterial, [type.worldWidth * 0.84, type.worldHeight * 1.14, type.worldLength * 0.5], [0, 0.39 + type.worldHeight * 1.02, -type.worldLength * 0.28]);
+        addTrafficPart(vehicle, trafficBodyGeometry, trafficWheelMaterial, [type.worldWidth * 0.68, 0.08, type.worldLength * 0.38], [0, 0.57 + type.worldHeight * 0.36, type.worldLength * 0.29]);
+        for (const side of [-1, 1]) {
+          addTrafficPart(vehicle, trafficBodyGeometry, trafficBodyMaterials[typeIndex], [0.12, type.worldHeight * 0.48, type.worldLength * 0.42], [side * type.worldWidth * 0.44, 0.43 + type.worldHeight * 0.58, type.worldLength * 0.29]);
+          addTrafficPart(vehicle, trafficBodyGeometry, trafficAccentMaterials[typeIndex], [0.18, 0.18, 0.08], [side * type.worldWidth * 0.31, 0.48 + type.worldHeight * 0.42, type.worldLength / 2 + 0.05]);
+        }
+      } else {
+        throw new Error(`Unknown traffic silhouette: ${type.silhouette}`);
+      }
 
       for (const side of [-1, 1]) {
         for (const end of [-1, 1]) {
-          const wheel = new THREE.Mesh(trafficWheelGeometry, trafficWheelMaterial);
-          wheel.rotation.z = Math.PI / 2;
-          wheel.position.set(side * type.worldWidth * 0.52, 0.31, end * type.worldLength * 0.31);
-          vehicle.add(wheel);
+          addTrafficPart(vehicle, trafficWheelGeometry, trafficWheelMaterial, [1, 1, 1], [side * type.worldWidth * 0.52, 0.31, end * type.worldLength * 0.31], [0, 0, Math.PI / 2]);
         }
-        const tailLight = new THREE.Mesh(trafficLightGeometry, trafficTailMaterial);
-        tailLight.position.set(side * type.worldWidth * 0.28, 0.48 + type.worldHeight * 0.55, type.worldLength / 2 + 0.04);
-        vehicle.add(tailLight);
       }
+      return vehicle;
+    }
+
+    const trafficTemplates = trafficTypes.map((_, typeIndex) => buildTrafficTemplate(typeIndex));
+
+    function createTrafficMesh(typeIndex) {
+      const type = trafficTypes[typeIndex];
+      const vehicle = trafficTemplates[typeIndex].clone(true);
+      vehicle.name = `traffic-${type.name.toLowerCase().replaceAll(' ', '-')}`;
       return vehicle;
     }
 
@@ -1086,10 +1116,10 @@
       const stage = courseStages[state.level];
       return JSON.stringify({
         coordinateSystem: 'logical 1000x700; origin top-left; x right; y down', mode: state.mode,
-        version: 'v2', rendering: { renderer: 'three', camera: threeCamera.type, trafficMeshes: trafficRoot.children.length, courseControls: courseCenterlineControls.length, roadSurface: 'wet-asphalt-v1', roadUvs: road.geometry.getAttribute('uv').count, stageOneRoadside: { guardrails: stageOneGuardrails.count, lightPoles: stageOneLightPoles.count } },
+        version: 'v2', rendering: { renderer: 'three', camera: threeCamera.type, trafficMeshes: trafficRoot.children.length, trafficTemplates: trafficTemplates.length, trafficSilhouettes: trafficTypes.map(type => type.silhouette), courseControls: courseCenterlineControls.length, roadSurface: 'wet-asphalt-v1', roadUvs: road.geometry.getAttribute('uv').count, stageOneRoadside: { guardrails: stageOneGuardrails.count, lightPoles: stageOneLightPoles.count } },
         course: { segment: course.segment, progress: +course.progress.toFixed(1), length: COURSE_LENGTH, centerX: +course.x.toFixed(2), elevation: +course.y.toFixed(2) },
         player: { type: 'light-cycle', x: +state.player.x.toFixed(1), y: state.player.y, courseLateral: +courseLateral.toFixed(2), steering: +normalizedSteering.toFixed(2), lean: +state.player.lean.toFixed(2), cockpitLean: +(-state.player.lean * 0.16).toFixed(3), horizonRoll: 0, jumpHeight: +(state.player.jumpHeight || 0).toFixed(1), jumpCooldown: +state.player.jumpCooldown.toFixed(2), invulnerable: +state.player.invulnerable.toFixed(2), trailPoints: state.energyTrail.length },
-        level: { number: stage.index + 1, name: stage.name, distance: Math.floor(state.levelDistance), target: stage.length, startDistance: stage.startDistance, endDistance: stage.endDistance, roadBlend: +state.levelBlend.toFixed(2) }, roadCenterAtPlayer: +roadCenter(state.player.y).toFixed(1), obstacles: state.obstacles.map(o => ({ type: trafficTypes[o.type].name, lane: o.laneIndex, x: +o.x.toFixed(1), y: +o.y.toFixed(1), distanceAhead: +obstacleDistanceAhead(o).toFixed(1), rendered: Boolean(trafficMeshes.get(o)?.visible) })), score: Math.floor(state.score),
+        level: { number: stage.index + 1, name: stage.name, distance: Math.floor(state.levelDistance), target: stage.length, startDistance: stage.startDistance, endDistance: stage.endDistance, roadBlend: +state.levelBlend.toFixed(2) }, roadCenterAtPlayer: +roadCenter(state.player.y).toFixed(1), obstacles: state.obstacles.map(o => ({ type: trafficTypes[o.type].name, silhouette: trafficTypes[o.type].silhouette, lane: o.laneIndex, x: +o.x.toFixed(1), y: +o.y.toFixed(1), distanceAhead: +obstacleDistanceAhead(o).toFixed(1), rendered: Boolean(trafficMeshes.get(o)?.visible) })), score: Math.floor(state.score),
         best: state.best, lives: state.lives, clears: state.clears, jumps: state.jumps, speed: Math.round(state.speed), flow: { chain: state.flow, multiplier: +flowMultiplier().toFixed(1) }, countdown: { remaining: +state.countdownRemaining.toFixed(3), goRemaining: +state.countdownGoRemaining.toFixed(3), label: countdownValue.textContent, visible: !raceCountdown.hidden },
         connected: cameraState === 'ready', input: cameraState === 'ready' ? 'camera' : 'keyboard', camera: { state: cameraState, roll: +cameraRoll.toFixed(2), pitch: +cameraPitch.toFixed(3), pitchDelta: +cameraPitchDelta.toFixed(3), tilt: +cameraTilt.toFixed(2), calibrationQuality: cameraPreview.dataset.quality, calibrationProgress: Math.min(100, Math.round(calibrationStableMs / 1200 * 100)) }, audio: { context: audioContext?.state || 'uninitialized', graphs: engineGraphCreations, muted: engineMuted, frequency: +engineFrequencyTarget.toFixed(1), gain: +engineGainTarget.toFixed(3), error: engineAudioError }, view: 'first-person', fullscreen: Boolean(document.fullscreenElement)
       });

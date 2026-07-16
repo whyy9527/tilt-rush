@@ -166,6 +166,7 @@
       },
       {
         name: 'Neon Chicane', subtitle: 'Link the openings', length: 4400, curve: 'chicane', interval: .96, pattern: [[0, 1], [2], [1, 2], [0], [0, 2], [1]],
+        environment: Object.freeze({ palette: 'neon', propSet: 'neon-tunnel' }),
         centerline: [
           { x: 18, y: 0, z: -143, segment: 'curve' },
           { x: 14, y: 2, z: -170, segment: 'climb' },
@@ -254,7 +255,8 @@
     threeScene.add(courseKeyLight);
     const environmentPalettes = Object.freeze({
       night: Object.freeze({ id: 'night', background: new THREE.Color(0x070b14), fog: new THREE.Color(0x070b14), sky: new THREE.Color(0x8fc8ff), ground: new THREE.Color(0x24120c), key: new THREE.Color(0xbdefff), keyIntensity: 0 }),
-      dockside: Object.freeze({ id: 'dockside', background: new THREE.Color(0x06131b), fog: new THREE.Color(0x0a2630), sky: new THREE.Color(0x6fd7dd), ground: new THREE.Color(0x0b3438), key: new THREE.Color(0xa9f2e8), keyIntensity: 1.05 })
+      dockside: Object.freeze({ id: 'dockside', background: new THREE.Color(0x06131b), fog: new THREE.Color(0x0a2630), sky: new THREE.Color(0x6fd7dd), ground: new THREE.Color(0x0b3438), key: new THREE.Color(0xa9f2e8), keyIntensity: 1.05 }),
+      neon: Object.freeze({ id: 'neon', background: new THREE.Color(0x10071c), fog: new THREE.Color(0x210b32), sky: new THREE.Color(0xff4fd8), ground: new THREE.Color(0x120b3f), key: new THREE.Color(0x43f7ff), keyIntensity: 1.25 })
     });
     const environmentBackground = new THREE.Color();
     const environmentFog = new THREE.Color();
@@ -582,10 +584,82 @@
     const docksideNominalPropRoadEdgeGap = 8.4 - 2.6 / 2 - 5;
     const docksideNominalApronRoadEdgeGap = 9.4 - 8.2 / 2 - 5;
 
+    const stageThreeWorldStart = courseStages[2].startDistance / COURSE_DISTANCE_SCALE;
+    const stageThreeWorldEnd = courseStages[2].endDistance / COURSE_DISTANCE_SCALE;
+    const neonTunnel = new THREE.Group();
+    neonTunnel.name = 'stage-three-neon-tunnel';
+    threeScene.add(neonTunnel);
+    const neonTransform = new THREE.Object3D();
+    const neonFrameDistances = [];
+    for (let distance = stageThreeWorldStart + 4; distance <= stageThreeWorldEnd - 4; distance += 8.5) neonFrameDistances.push(distance);
+
+    const neonStructureMaterial = new THREE.MeshStandardMaterial({ color: 0x211735, emissive: 0x3d125e, emissiveIntensity: 1.45, roughness: 0.38, metalness: 0.72 });
+    const neonCyanMaterial = new THREE.MeshStandardMaterial({ color: 0x7cffff, emissive: 0x18dce8, emissiveIntensity: 3.4, roughness: 0.2, metalness: 0.28 });
+    const neonMagentaMaterial = new THREE.MeshStandardMaterial({ color: 0xff8be8, emissive: 0xf024c6, emissiveIntensity: 3.4, roughness: 0.2, metalness: 0.28 });
+    const neonUprights = new THREE.InstancedMesh(new THREE.BoxGeometry(0.44, 6.6, 0.44), neonStructureMaterial, neonFrameDistances.length * 2);
+    const neonCrossbars = new THREE.InstancedMesh(new THREE.BoxGeometry(13.04, 0.36, 0.44), neonStructureMaterial, neonFrameDistances.length);
+    const neonCyanStrips = new THREE.InstancedMesh(new THREE.BoxGeometry(0.08, 4.8, 0.08), neonCyanMaterial, neonFrameDistances.length);
+    const neonMagentaStrips = new THREE.InstancedMesh(new THREE.BoxGeometry(0.08, 4.8, 0.08), neonMagentaMaterial, neonFrameDistances.length);
+    const neonCyanSigns = new THREE.InstancedMesh(new THREE.BoxGeometry(2.2, 1.12, 0.14), neonCyanMaterial, Math.ceil(neonFrameDistances.length / 2));
+    const neonMagentaSigns = new THREE.InstancedMesh(new THREE.BoxGeometry(2.2, 1.12, 0.14), neonMagentaMaterial, Math.floor(neonFrameDistances.length / 2));
+    neonUprights.name = 'neon-tunnel-upright-pool';
+    neonCrossbars.name = 'neon-tunnel-crossbar-pool';
+    neonCyanStrips.name = 'neon-tunnel-cyan-strip-pool';
+    neonMagentaStrips.name = 'neon-tunnel-magenta-strip-pool';
+    neonCyanSigns.name = 'neon-tunnel-cyan-sign-pool';
+    neonMagentaSigns.name = 'neon-tunnel-magenta-sign-pool';
+    const neonTunnelPools = [neonUprights, neonCrossbars, neonCyanStrips, neonMagentaStrips, neonCyanSigns, neonMagentaSigns];
+    let neonUprightIndex = 0;
+    let neonCyanSignIndex = 0;
+    let neonMagentaSignIndex = 0;
+    for (let index = 0; index < neonFrameDistances.length; index++) {
+      const distance = neonFrameDistances[index];
+      const frame = courseFrameAt(distance);
+      neonTransform.rotation.set(0, Math.atan2(frame.tangent.x, -frame.tangent.z), 0);
+      neonTransform.quaternion.setFromEuler(neonTransform.rotation);
+      neonTransform.scale.set(1, 1, 1);
+
+      for (const side of [-1, 1]) {
+        neonTransform.position.copy(frame.point).addScaledVector(frame.right, side * 6.3);
+        neonTransform.position.y += 3.3;
+        neonTransform.updateMatrix();
+        neonUprights.setMatrixAt(neonUprightIndex++, neonTransform.matrix);
+      }
+
+      neonTransform.position.copy(frame.point);
+      neonTransform.position.y += 6.42;
+      neonTransform.updateMatrix();
+      neonCrossbars.setMatrixAt(index, neonTransform.matrix);
+
+      neonTransform.position.copy(frame.point).addScaledVector(frame.right, -6.04);
+      neonTransform.position.y += 3.15;
+      neonTransform.updateMatrix();
+      neonCyanStrips.setMatrixAt(index, neonTransform.matrix);
+
+      neonTransform.position.copy(frame.point).addScaledVector(frame.right, 6.04);
+      neonTransform.position.y += 3.15;
+      neonTransform.updateMatrix();
+      neonMagentaStrips.setMatrixAt(index, neonTransform.matrix);
+
+      const signSide = index % 2 === 0 ? -1 : 1;
+      neonTransform.position.copy(frame.point).addScaledVector(frame.right, signSide * 7.7);
+      neonTransform.position.y += 3.4;
+      neonTransform.updateMatrix();
+      if (index % 2 === 0) neonCyanSigns.setMatrixAt(neonCyanSignIndex++, neonTransform.matrix);
+      else neonMagentaSigns.setMatrixAt(neonMagentaSignIndex++, neonTransform.matrix);
+    }
+    for (const pool of neonTunnelPools) {
+      pool.instanceMatrix.needsUpdate = true;
+      pool.computeBoundingSphere();
+    }
+    neonTunnel.add(...neonTunnelPools);
+    const neonNominalUprightRoadEdgeGap = 6.3 - 0.44 / 2 - 5;
+    const neonNominalSignRoadEdgeGap = 7.7 - 2.2 / 2 - 5;
+
     const roadsideGeometry = new THREE.BoxGeometry(0.14, 1.25, 0.14);
     const roadsideMaterial = new THREE.MeshStandardMaterial({ color: 0xffb35a, emissive: 0x6b2b08, emissiveIntensity: 1.2 });
     for (let distance = 10; distance < COURSE_GEOMETRY_LENGTH; distance += 14) {
-      if (distance < stageTwoWorldEnd) continue;
+      if (distance < stageThreeWorldEnd) continue;
       const frame = courseFrameAt(distance);
       for (const side of [-1, 1]) {
         const roadsideMarker = new THREE.Mesh(roadsideGeometry, roadsideMaterial);
@@ -1287,7 +1361,7 @@
       const previousEnvironment = stageEnvironment(courseStages[state.previousLevel]);
       return JSON.stringify({
         coordinateSystem: 'logical 1000x700; origin top-left; x right; y down', mode: state.mode,
-        version: 'v2', rendering: { renderer: 'three', camera: threeCamera.type, trafficMeshes: trafficRoot.children.length, trafficTemplates: trafficTemplates.length, trafficSilhouettes: trafficTypes.map(type => type.silhouette), courseControls: courseCenterlineControls.length, roadSurface: 'wet-asphalt-v1', roadUvs: road.geometry.getAttribute('uv').count, stageOneRoadside: { guardrails: stageOneGuardrails.count, lightPoles: stageOneLightPoles.count }, stageTwoDockside: { roots: threeScene.children.filter(child => child.name === 'stage-two-dockside').length, rootChildren: docksideRoadside.children.length, apronSlabs: docksideAprons.count, stacks: docksideContainerSites.length, containers: docksideContainers.count, cranes: docksideCraneMasts.count, cranePools: docksideCranePools.length, worldStart: +stageTwoWorldStart.toFixed(3), worldEnd: +stageTwoWorldEnd.toFixed(3), roadHalfWidth: 5, nominalRoadEdgeGap: +Math.min(docksideNominalPropRoadEdgeGap, docksideNominalApronRoadEdgeGap).toFixed(2), nominalPropRoadEdgeGap: +docksideNominalPropRoadEdgeGap.toFixed(2), nominalApronRoadEdgeGap: +docksideNominalApronRoadEdgeGap.toFixed(2), stackAnchors: docksideContainerSites.map(site => +site.distance.toFixed(3)), craneAnchors: docksideCranePlacements.map(crane => +crane.distance.toFixed(3)) } },
+        version: 'v2', rendering: { renderer: 'three', camera: threeCamera.type, trafficMeshes: trafficRoot.children.length, trafficTemplates: trafficTemplates.length, trafficSilhouettes: trafficTypes.map(type => type.silhouette), courseControls: courseCenterlineControls.length, roadSurface: 'wet-asphalt-v1', roadUvs: road.geometry.getAttribute('uv').count, stageOneRoadside: { guardrails: stageOneGuardrails.count, lightPoles: stageOneLightPoles.count }, stageTwoDockside: { roots: threeScene.children.filter(child => child.name === 'stage-two-dockside').length, rootChildren: docksideRoadside.children.length, apronSlabs: docksideAprons.count, stacks: docksideContainerSites.length, containers: docksideContainers.count, cranes: docksideCraneMasts.count, cranePools: docksideCranePools.length, worldStart: +stageTwoWorldStart.toFixed(3), worldEnd: +stageTwoWorldEnd.toFixed(3), roadHalfWidth: 5, nominalRoadEdgeGap: +Math.min(docksideNominalPropRoadEdgeGap, docksideNominalApronRoadEdgeGap).toFixed(2), nominalPropRoadEdgeGap: +docksideNominalPropRoadEdgeGap.toFixed(2), nominalApronRoadEdgeGap: +docksideNominalApronRoadEdgeGap.toFixed(2), stackAnchors: docksideContainerSites.map(site => +site.distance.toFixed(3)), craneAnchors: docksideCranePlacements.map(crane => +crane.distance.toFixed(3)) }, stageThreeNeon: { roots: threeScene.children.filter(child => child.name === 'stage-three-neon-tunnel').length, rootChildren: neonTunnel.children.length, frames: neonFrameDistances.length, uprights: neonUprights.count, crossbars: neonCrossbars.count, lightStrips: neonCyanStrips.count + neonMagentaStrips.count, signs: neonCyanSigns.count + neonMagentaSigns.count, signPools: 2, worldStart: +stageThreeWorldStart.toFixed(3), worldEnd: +stageThreeWorldEnd.toFixed(3), roadHalfWidth: 5, nominalUprightRoadEdgeGap: +neonNominalUprightRoadEdgeGap.toFixed(2), nominalSignRoadEdgeGap: +neonNominalSignRoadEdgeGap.toFixed(2), frameAnchors: neonFrameDistances.map(distance => +distance.toFixed(3)) } },
         environment: { previous: previousEnvironment.id, current: activeEnvironmentPalette, propSet: stage.environment?.propSet || 'none', blend: +activeEnvironmentBlend.toFixed(3), background: `#${environmentBackground.getHexString()}`, fog: `#${environmentFog.getHexString()}`, sky: `#${environmentSky.getHexString()}`, ground: `#${environmentGround.getHexString()}`, key: `#${environmentKey.getHexString()}`, keyIntensity: +activeEnvironmentKeyIntensity.toFixed(3) },
         course: { segment: course.segment, progress: +course.progress.toFixed(1), length: COURSE_LENGTH, centerX: +course.x.toFixed(2), elevation: +course.y.toFixed(2) },
         player: { type: 'light-cycle', x: +state.player.x.toFixed(1), y: state.player.y, courseLateral: +courseLateral.toFixed(2), steering: +normalizedSteering.toFixed(2), lean: +state.player.lean.toFixed(2), cockpitLean: +(-state.player.lean * 0.16).toFixed(3), horizonRoll: 0, jumpHeight: +(state.player.jumpHeight || 0).toFixed(1), jumpCooldown: +state.player.jumpCooldown.toFixed(2), invulnerable: +state.player.invulnerable.toFixed(2), trailPoints: state.energyTrail.length },

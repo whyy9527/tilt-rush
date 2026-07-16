@@ -150,6 +150,10 @@
     let width = 0;
     let height = 0;
     let scale = 1;
+    let logicalViewTop = 0;
+    let logicalViewBottom = 700;
+    let roadDrawTop = -40;
+    let roadDrawBottom = 740;
     let cameraRequestId = 0;
     let cameraTilt = 0;
     let cameraState = 'off';
@@ -178,6 +182,16 @@
       width = canvas.width = innerWidth * devicePixelRatio;
       height = canvas.height = innerHeight * devicePixelRatio;
       scale = Math.min(width / 1000, height / 700);
+      const verticalInset = (height - 700 * scale) / 2;
+      if (Math.abs(verticalInset) < 0.01) {
+        logicalViewTop = 0;
+        logicalViewBottom = 700;
+      } else {
+        logicalViewTop = -verticalInset / scale;
+        logicalViewBottom = logicalViewTop + height / scale;
+      }
+      roadDrawTop = Math.floor((logicalViewTop - 40) / 20) * 20;
+      roadDrawBottom = Math.ceil((logicalViewBottom + 40) / 20) * 20;
     }
     addEventListener('resize', resize);
     resize();
@@ -334,31 +348,36 @@
       context.restore();
     }
 
+    function drawVerticalTiles(image, offset, top, bottom) {
+      const tileHeight = 1500;
+      let tileY = offset - Math.ceil((offset - top) / tileHeight) * tileHeight;
+      for (; tileY < bottom; tileY += tileHeight) context.drawImage(image, 0, tileY, 1000, tileHeight);
+    }
+
     function drawCyberCity() {
-      context.fillStyle = '#080811'; context.fillRect(0, 0, 1000, 700);
+      context.fillStyle = '#080811'; context.fillRect(0, logicalViewTop, 1000, logicalViewBottom - logicalViewTop);
       if (!cityImage.complete || !cityImage.naturalWidth) return;
       const offset = (state.totalDistance * CITY_PARALLAX_PER_LOGICAL) % 1500;
       context.globalAlpha = .84;
-      context.drawImage(cityImage, 0, offset - 1500, 1000, 1500);
-      context.drawImage(cityImage, 0, offset, 1000, 1500);
+      drawVerticalTiles(cityImage, offset, logicalViewTop, logicalViewBottom);
       context.globalAlpha = 1;
       const veil = context.createLinearGradient(0, 0, 1000, 0);
       veil.addColorStop(0, '#05051022'); veil.addColorStop(.5, '#0b0a1900'); veil.addColorStop(1, '#05051022');
-      context.fillStyle = veil; context.fillRect(0, 0, 1000, 700);
+      context.fillStyle = veil; context.fillRect(0, logicalViewTop, 1000, logicalViewBottom - logicalViewTop);
     }
 
     function traceRoadEdge(offset) {
       context.beginPath();
-      for (let y = -40; y <= 740; y += 20) {
+      for (let y = roadDrawTop; y <= roadDrawBottom; y += 20) {
         const x = roadCenter(y) + offset;
-        if (y === -40) context.moveTo(x, y); else context.lineTo(x, y);
+        if (y === roadDrawTop) context.moveTo(x, y); else context.lineTo(x, y);
       }
     }
 
     function traceRoadSurface() {
       context.beginPath();
-      for (let y = -40; y <= 740; y += 20) context.lineTo(roadCenter(y) - 250, y);
-      for (let y = 740; y >= -40; y -= 20) context.lineTo(roadCenter(y) + 250, y);
+      for (let y = roadDrawTop; y <= roadDrawBottom; y += 20) context.lineTo(roadCenter(y) - 250, y);
+      for (let y = roadDrawBottom; y >= roadDrawTop; y -= 20) context.lineTo(roadCenter(y) + 250, y);
       context.closePath();
     }
 
@@ -398,7 +417,9 @@
       if (state.level === 0) return;
       const color = state.level === 1 ? '#ff8a3d' : state.level === 2 ? '#5ee7ff' : '#ff4f35';
       context.save(); context.strokeStyle = color; context.fillStyle = color; context.shadowColor = color; context.shadowBlur = 10;
-      for (let y = -90 + (state.roadOffset % 120); y < 760; y += 120) {
+      const signalOrigin = -90 + (state.roadOffset % 120);
+      const firstSignalY = signalOrigin + Math.floor((roadDrawTop - signalOrigin) / 120) * 120;
+      for (let y = firstSignalY; y < roadDrawBottom; y += 120) {
         const direction = Math.sign(roadCenter(y + 30) - roadCenter(y - 30)) || 1;
         const outside = direction > 0 ? 218 : -218; const x = roadCenter(y) + outside;
         context.globalAlpha = .72; context.lineWidth = 4; context.beginPath();
@@ -406,7 +427,9 @@
       }
       if (state.level >= 2) {
         const spacing = state.level === 2 ? 520 : 390;
-        for (let y = -spacing + (state.totalDistance % spacing); y < 760; y += spacing) {
+        const barOrigin = -spacing + (state.totalDistance % spacing);
+        const firstBarY = barOrigin + Math.floor((roadDrawTop - barOrigin) / spacing) * spacing;
+        for (let y = firstBarY; y < roadDrawBottom; y += spacing) {
           context.globalAlpha = state.level === 2 ? .22 : .3; context.fillRect(roadCenter(y) - 205, y, 410, state.level === 2 ? 3 : 7);
           if (state.level === 3) {
             context.globalAlpha = .62;
@@ -432,19 +455,20 @@
       context.save(); traceRoadSurface(); context.clip();
       if (roadImage.complete && roadImage.naturalWidth) {
         const roadTextureOffset = state.totalDistance % 1500;
-        context.drawImage(roadImage, 0, roadTextureOffset - 1500, 1000, 1500);
-        context.drawImage(roadImage, 0, roadTextureOffset, 1000, 1500);
+        drawVerticalTiles(roadImage, roadTextureOffset, roadDrawTop, roadDrawBottom);
       } else {
-        context.fillStyle = '#1b1d26'; context.fillRect(0, 0, 1000, 700);
+        context.fillStyle = '#1b1d26'; context.fillRect(0, roadDrawTop, 1000, roadDrawBottom - roadDrawTop);
       }
-      context.fillStyle = '#11152255'; context.fillRect(0, 0, 1000, 700); context.restore();
+      context.fillStyle = '#11152255'; context.fillRect(0, roadDrawTop, 1000, roadDrawBottom - roadDrawTop); context.restore();
       context.shadowBlur = 0; context.strokeStyle = '#7d8794'; context.lineWidth = 6;
       traceRoadEdge(-250); context.stroke();
       traceRoadEdge(250); context.stroke();
       context.strokeStyle = '#c3c8d0bb'; context.lineWidth = 4; context.setLineDash([48, 102]); context.lineDashOffset = -state.roadOffset;
       for (const laneOffset of [-75, 75]) { traceRoadEdge(laneOffset); context.stroke(); }
       context.setLineDash([]); context.shadowBlur = 0;
-      for (let y = -80 + state.roadOffset; y < 760; y += 150) {
+      const markerOrigin = -80 + state.roadOffset;
+      const firstMarkerY = markerOrigin + Math.floor((roadDrawTop - markerOrigin) / 150) * 150;
+      for (let y = firstMarkerY; y < roadDrawBottom; y += 150) {
         context.fillStyle = '#d6a758'; context.fillRect(roadCenter(y) - 264, y, 5, 42);
         context.fillRect(roadCenter(y) + 259, y, 5, 42);
       }
@@ -644,6 +668,7 @@
 
     window.render_game_to_text = () => JSON.stringify({
       coordinateSystem: 'logical 1000x700; origin top-left; x right; y down', mode: state.mode,
+      layout: { viewport: `${innerWidth}x${innerHeight}`, logicalViewY: [+logicalViewTop.toFixed(1), +logicalViewBottom.toFixed(1)], roadDrawY: [roadDrawTop, roadDrawBottom] },
       player: { type: 'light-cycle', x: +state.player.x.toFixed(1), y: state.player.y, lean: +state.player.lean.toFixed(2), jumpHeight: +(state.player.jumpHeight || 0).toFixed(1), jumpCooldown: +state.player.jumpCooldown.toFixed(2), invulnerable: +state.player.invulnerable.toFixed(2), trailPoints: state.energyTrail.length },
       level: { number: state.level + 1, name: levels[state.level].name, distance: Math.floor(state.levelDistance), target: levels[state.level].length, roadBlend: +state.levelBlend.toFixed(2) }, roadCenterAtPlayer: +roadCenter(state.player.y).toFixed(1), obstacles: state.obstacles.map(o => ({ type: trafficTypes[o.type].name, lane: o.laneIndex, x: +o.x.toFixed(1), y: +o.y.toFixed(1) })), score: Math.floor(state.score),
       best: state.best, lives: state.lives, clears: state.clears, jumps: state.jumps, speed: Math.round(state.speed),

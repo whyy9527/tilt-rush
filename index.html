@@ -43,7 +43,6 @@
     button:hover { background: #ffffff2b; transform: translateY(-1px); }
     button:disabled { cursor: default; opacity: .42; transform: none; }
     .actions { display: flex; gap: 5px; }
-    #audio { padding-inline: 8px; }
     .input-switch { display: flex; gap: 3px; padding: 3px; border: 1px solid #ffffff2b; border-radius: 12px; background: #020b16a8; }
     .input-switch button { min-height: 34px; border-color: transparent; background: transparent; }
     .input-switch button[aria-pressed="true"] { border-color: #ff764d80; background: #ff542e2b; color: #ffb197; box-shadow: inset 0 0 0 1px #ff764d30; }
@@ -70,7 +69,7 @@
     .race-countdown[hidden] { display: none; }
     #countdown-value { display: grid; width: clamp(116px, 18vw, 190px); aspect-ratio: 1; place-items: center; border: 2px solid #ff815b99; border-radius: 50%; background: radial-gradient(circle, #182a3de8 0 42%, #07111ecf 72%); box-shadow: 0 0 0 8px #ff542e14, 0 0 48px #ff542e59, inset 0 0 36px #050912; color: #fff4ed; font-size: clamp(70px, 12vw, 132px); font-weight: 900; font-variant-numeric: tabular-nums; line-height: 1; text-shadow: 0 0 24px #ff5b36; }
     .race-countdown[data-phase="go"] #countdown-value { width: clamp(150px, 23vw, 240px); aspect-ratio: 1.4; border-radius: 28px 8px; color: #ffb092; font-size: clamp(52px, 9vw, 96px); }
-    @media (max-width: 760px) { .topbar { inset: 10px 10px auto; gap: 8px; } .race-hud { width: 58vw; } .speed-hud { width: 37vw; } #hud-speed { font-size: 38px; } .actions > button { display: none; } .actions > #audio { display: block; } .input-switch button { padding-inline: 8px; } .race-heading { padding: 10px 12px 7px; } #hud-stage-name { font-size: 16px; } }
+    @media (max-width: 760px) { .topbar { inset: 10px 10px auto; gap: 8px; } .race-hud { width: 58vw; } .speed-hud { width: 37vw; } #hud-speed { font-size: 38px; } .actions > button { display: none; } .input-switch button { padding-inline: 8px; } .race-heading { padding: 10px 12px 7px; } #hud-stage-name { font-size: 16px; } }
   </style>
   <script type="importmap">
     { "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.185.1/build/three.module.js" } }
@@ -91,7 +90,7 @@
     <section class="panel race-hud" aria-label="Race objective and controls">
       <div class="race-heading"><div><span class="eyebrow" id="hud-stage-index">Night run · Stage 1/4</span><strong id="hud-stage-name">Ignition Mile</strong></div><div class="race-progress"><span id="hud-stage-percent">0%</span><span id="hud-flow">FLOW 0 · ×1.0</span></div></div>
       <div class="stage-track"><div id="stage-fill"></div></div>
-      <div class="control-deck"><span id="status">Camera off · keyboard ready</span><div class="actions"><button id="camera" type="button" aria-pressed="false">Enable camera</button><button id="center" type="button" disabled>Recenter</button><button id="audio" type="button" aria-label="Mute engine" aria-pressed="false">Mute</button><button id="fullscreen" type="button">Full screen</button></div></div>
+      <div class="control-deck"><span id="status">Camera off · keyboard ready</span><div class="actions"><button id="camera" type="button" aria-pressed="false">Enable camera</button><button id="center" type="button" disabled>Recenter</button><button id="fullscreen" type="button">Full screen</button></div></div>
     </section>
     <section class="panel speed-hud" id="telemetry" aria-label="Speed and race stats">
       <div class="speed-top"><span id="hud-speed">260</span><span class="speed-meta">KM/H<br><b id="hud-gear">3</b> GEAR</span></div>
@@ -114,7 +113,6 @@
     const threeCanvas = document.querySelector('#three-game');
     const status = document.querySelector('#status');
     const cameraButton = document.querySelector('#camera');
-    const audioButton = document.querySelector('#audio');
     const cameraVideo = document.querySelector('#camera-feed');
     const cameraOverlay = document.querySelector('#camera-calibration');
     const calibrationTitle = document.querySelector('#calibration-title');
@@ -200,10 +198,10 @@
       return courseStages.find(stage => clampedDistance < stage.endDistance);
     }
     const trafficTypes = [
-      { name: 'Model 3', silhouette: 'low-wedge', accent: 0x4cc9ff, src: 'assets/traffic/model-3.png', width: 54, height: 112, color: 0x2553a6, worldWidth: 1.7, worldHeight: 0.62, worldLength: 3.8 },
-      { name: 'Model Y', silhouette: 'high-roof', accent: 0x8dffb5, src: 'assets/traffic/model-y.png', width: 58, height: 112, color: 0xe3e7ed, worldWidth: 1.82, worldHeight: 0.78, worldLength: 4.05 },
-      { name: 'Cybercab', silhouette: 'rounded-pod', accent: 0xffc23f, src: 'assets/traffic/cybercab.png', width: 54, height: 116, color: 0xe5a832, worldWidth: 1.78, worldHeight: 0.66, worldLength: 3.9 },
-      { name: 'Cybertruck', silhouette: 'open-bed', accent: 0xff4f6d, src: 'assets/traffic/cybertruck.png', width: 58, height: 126, color: 0x9ca3ad, worldWidth: 1.9, worldHeight: 0.82, worldLength: 4.5 }
+      { name: 'Model 3', silhouette: 'uv-sedan', src: 'assets/traffic/model-3.png', width: 54, height: 112, color: 0x2553a6, worldWidth: 1.7, worldHeight: 0.62, worldLength: 3.8, roofScale: 1.45, cabinHeight: 0.78, cabinLength: 0.52, headlights: 'pair' },
+      { name: 'Model Y', silhouette: 'uv-crossover', src: 'assets/traffic/model-y.png', width: 58, height: 112, color: 0xe3e7ed, worldWidth: 1.82, worldHeight: 0.78, worldLength: 4.05, roofScale: 1.68, cabinHeight: 1.08, cabinLength: 0.6, headlights: 'pair' },
+      { name: 'Cybercab', silhouette: 'uv-coupe', src: 'assets/traffic/cybercab.png', width: 54, height: 116, color: 0xe5a832, worldWidth: 1.78, worldHeight: 0.66, worldLength: 3.9, roofScale: 1.42, cabinHeight: 0.8, cabinLength: 0.56, headlights: 'bar' },
+      { name: 'Cybertruck', silhouette: 'uv-pickup', src: 'assets/traffic/cybertruck.png', width: 58, height: 126, color: 0x9ca3ad, worldWidth: 1.9, worldHeight: 0.82, worldLength: 4.5, roofScale: 1.56, cabinHeight: 1, cabinLength: 0.5, headlights: 'bar' }
     ];
     const keys = new Set();
     let cameraRequestId = 0;
@@ -224,20 +222,6 @@
     let testingMode = false;
     let lastFrame = performance.now();
     let normalizedSteering = 0;
-    let audioContext;
-    let engineOscillator;
-    let engineFilter;
-    let engineGain;
-    let engineMuted = false;
-    let engineGraphCreations = 0;
-    let engineFrequencyTarget = 72;
-    let engineGainTarget = 0;
-    let engineAppliedFrequency = -1;
-    let engineAppliedFilter = -1;
-    let engineAppliedGain = -1;
-    let engineAudioError = '';
-    let engineAudioUnavailable = false;
-    let engineAudioSuspendedForPage = false;
 
     const threeRenderer = new THREE.WebGLRenderer({ canvas: threeCanvas, antialias: true });
     threeRenderer.setPixelRatio(Math.min(devicePixelRatio, 2));
@@ -808,15 +792,54 @@
     threeScene.add(trafficRoot);
     const trafficMeshes = new Map();
     const trafficBodyGeometry = new THREE.BoxGeometry(1, 1, 1);
-    const trafficWedgeGeometry = new THREE.CylinderGeometry(0.68, 0.86, 1, 4, 1, false, Math.PI / 4);
-    const trafficPodGeometry = new THREE.SphereGeometry(0.5, 14, 8);
+    function buildTrafficPrismGeometry(topHalfWidth, topFront, topRear) {
+      const geometry = new THREE.BufferGeometry();
+      geometry.setAttribute('position', new THREE.Float32BufferAttribute([
+        -0.5, -0.5, 0.5, 0.5, -0.5, 0.5, 0.5, -0.5, -0.5, -0.5, -0.5, -0.5,
+        -topHalfWidth, 0.5, topFront, topHalfWidth, 0.5, topFront, topHalfWidth, 0.5, topRear, -topHalfWidth, 0.5, topRear
+      ], 3));
+      geometry.setIndex([
+        0, 1, 4, 1, 5, 4,
+        1, 2, 5, 2, 6, 5,
+        2, 3, 6, 3, 7, 6,
+        3, 0, 7, 0, 4, 7,
+        4, 5, 7, 5, 6, 7,
+        3, 2, 0, 2, 1, 0
+      ]);
+      geometry.computeVertexNormals();
+      return geometry;
+    }
+    const trafficHullGeometry = buildTrafficPrismGeometry(0.44, 0.44, -0.44);
+    const trafficCabinGeometry = buildTrafficPrismGeometry(0.4, 0.2, -0.31);
     const trafficWheelGeometry = new THREE.CylinderGeometry(0.3, 0.3, 0.2, 12);
     const trafficBodyMaterials = trafficTypes.map(type => new THREE.MeshStandardMaterial({ color: type.color, roughness: 0.48, metalness: 0.38 }));
-    const trafficAccentMaterials = trafficTypes.map(type => new THREE.MeshStandardMaterial({ color: type.accent, emissive: type.accent, emissiveIntensity: 3.4, roughness: 0.28 }));
     const trafficCabinMaterial = new THREE.MeshStandardMaterial({ color: 0x101826, roughness: 0.24, metalness: 0.52 });
     const trafficWheelMaterial = new THREE.MeshStandardMaterial({ color: 0x090b0f, roughness: 0.92 });
+    const trafficUnderbodyMaterial = new THREE.MeshStandardMaterial({ color: 0x14171d, roughness: 0.76, metalness: 0.42 });
+    const trafficHeadlightMaterial = new THREE.MeshStandardMaterial({ color: 0xfff4cf, emissive: 0xffe3a0, emissiveIntensity: 5.2, roughness: 0.16 });
+    const trafficTextureLoader = new THREE.TextureLoader();
+    const trafficTextureAnisotropy = Math.min(8, threeRenderer.capabilities.getMaxAnisotropy());
+    const trafficTextures = trafficTypes.map(type => {
+      const texture = trafficTextureLoader.load(type.src);
+      texture.colorSpace = THREE.SRGBColorSpace;
+      texture.anisotropy = trafficTextureAnisotropy;
+      return texture;
+    });
+    const trafficSkinMaterials = trafficTextures.map(texture => new THREE.MeshStandardMaterial({ map: texture, transparent: true, alphaTest: 0.04, side: THREE.DoubleSide, roughness: 0.44, metalness: 0.14 }));
+    const trafficFrontGeometry = new THREE.PlaneGeometry(1, 1);
+    const trafficFrontTextures = trafficTextures.map(texture => {
+      const frontTexture = texture.clone();
+      frontTexture.repeat.set(1, 0.27);
+      frontTexture.offset.set(0, 0.73);
+      frontTexture.needsUpdate = true;
+      return frontTexture;
+    });
+    const trafficFrontMaterials = trafficFrontTextures.map(texture => new THREE.MeshBasicMaterial({ map: texture, transparent: true, alphaTest: 0.04, side: THREE.DoubleSide, toneMapped: false }));
     const trafficForward = new THREE.Vector3(0, 0, -1);
     const TRAFFIC_WORLD_DISTANCE_PER_LOGICAL = 1 / COURSE_DISTANCE_SCALE;
+    const TRAFFIC_SPAWN_DISTANCE = 44;
+    const TRAFFIC_VISIBLE_DISTANCE = 76;
+    const TRAFFIC_DESPAWN_DISTANCE = -5;
 
     function addTrafficPart(group, geometry, material, scale, position, rotation = [0, 0, 0]) {
       const part = new THREE.Mesh(geometry, material);
@@ -826,38 +849,63 @@
       group.add(part);
     }
 
+    function buildTrafficSkinGeometry(type) {
+      const width = type.worldWidth * 0.55;
+      const height = type.worldHeight;
+      const length = type.worldLength;
+      const base = 0.34;
+      const profile = [
+        { z: length * 0.51, y: base + height * 0.54, width: 0.74, v: 1 },
+        { z: length * 0.3, y: base + height * 0.68, width: 0.98, v: 0.8 },
+        { z: length * 0.1, y: base + height * 1.2, width: 1, v: 0.61 },
+        { z: -length * 0.2, y: base + height * type.roofScale, width: 0.96, v: 0.3 },
+        { z: -length * 0.43, y: base + height * 0.74, width: 0.9, v: 0.08 },
+        { z: -length * 0.51, y: base + height * 0.58, width: 0.74, v: 0 }
+      ];
+      const positions = [];
+      const uvs = [];
+      const indices = [];
+      for (const section of profile) {
+        positions.push(-width * section.width, section.y, section.z, width * section.width, section.y, section.z);
+        uvs.push(0, section.v, 1, section.v);
+      }
+      for (let index = 0; index < profile.length - 1; index++) {
+        const left = index * 2;
+        const right = left + 1;
+        const nextLeft = left + 2;
+        const nextRight = left + 3;
+        indices.push(left, right, nextLeft, right, nextRight, nextLeft);
+      }
+      const geometry = new THREE.BufferGeometry();
+      geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+      geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+      geometry.setIndex(indices);
+      geometry.computeVertexNormals();
+      return geometry;
+    }
+
+    const trafficSkinGeometries = trafficTypes.map(type => buildTrafficSkinGeometry(type));
+
     function buildTrafficTemplate(typeIndex) {
       const type = trafficTypes[typeIndex];
       const vehicle = new THREE.Group();
       vehicle.name = `traffic-template-${type.name.toLowerCase().replaceAll(' ', '-')}`;
       vehicle.userData.trafficType = type.name;
       vehicle.userData.silhouette = type.silhouette;
+      vehicle.userData.texture = type.src;
 
-      if (type.silhouette === 'low-wedge') {
-        addTrafficPart(vehicle, trafficBodyGeometry, trafficBodyMaterials[typeIndex], [type.worldWidth, type.worldHeight, type.worldLength], [0, 0.34 + type.worldHeight / 2, 0]);
-        addTrafficPart(vehicle, trafficWedgeGeometry, trafficCabinMaterial, [type.worldWidth * 0.78, type.worldHeight * 0.72, type.worldLength * 0.52], [0, 0.34 + type.worldHeight * 1.18, -type.worldLength * 0.08]);
-        addTrafficPart(vehicle, trafficBodyGeometry, trafficAccentMaterials[typeIndex], [type.worldWidth * 0.7, 0.09, 0.07], [0, 0.51 + type.worldHeight * 0.55, type.worldLength / 2 + 0.04]);
-      } else if (type.silhouette === 'high-roof') {
-        addTrafficPart(vehicle, trafficBodyGeometry, trafficBodyMaterials[typeIndex], [type.worldWidth, type.worldHeight, type.worldLength], [0, 0.34 + type.worldHeight / 2, 0]);
-        addTrafficPart(vehicle, trafficBodyGeometry, trafficCabinMaterial, [type.worldWidth * 0.82, type.worldHeight * 0.94, type.worldLength * 0.58], [0, 0.43 + type.worldHeight * 1.26, -type.worldLength * 0.06]);
-        for (const side of [-1, 1]) {
-          addTrafficPart(vehicle, trafficBodyGeometry, trafficBodyMaterials[typeIndex], [0.07, 0.08, type.worldLength * 0.54], [side * type.worldWidth * 0.34, 0.5 + type.worldHeight * 1.73, -type.worldLength * 0.06]);
-          addTrafficPart(vehicle, trafficBodyGeometry, trafficAccentMaterials[typeIndex], [0.11, type.worldHeight * 0.62, 0.08], [side * type.worldWidth * 0.3, 0.48 + type.worldHeight * 0.7, type.worldLength / 2 + 0.05]);
-        }
-      } else if (type.silhouette === 'rounded-pod') {
-        addTrafficPart(vehicle, trafficBodyGeometry, trafficBodyMaterials[typeIndex], [type.worldWidth, type.worldHeight * 0.72, type.worldLength], [0, 0.34 + type.worldHeight * 0.36, 0]);
-        addTrafficPart(vehicle, trafficPodGeometry, trafficCabinMaterial, [type.worldWidth * 0.9, type.worldHeight * 1.02, type.worldLength * 0.68], [0, 0.42 + type.worldHeight * 1.02, -type.worldLength * 0.08]);
-        addTrafficPart(vehicle, trafficBodyGeometry, trafficAccentMaterials[typeIndex], [type.worldWidth * 0.78, 0.12, 0.08], [0, 0.5 + type.worldHeight * 0.48, type.worldLength / 2 + 0.05], [0, 0, -0.08]);
-      } else if (type.silhouette === 'open-bed') {
-        addTrafficPart(vehicle, trafficBodyGeometry, trafficBodyMaterials[typeIndex], [type.worldWidth, type.worldHeight * 0.62, type.worldLength], [0, 0.34 + type.worldHeight * 0.31, 0]);
-        addTrafficPart(vehicle, trafficWedgeGeometry, trafficCabinMaterial, [type.worldWidth * 0.84, type.worldHeight * 1.14, type.worldLength * 0.5], [0, 0.39 + type.worldHeight * 1.02, -type.worldLength * 0.28]);
-        addTrafficPart(vehicle, trafficBodyGeometry, trafficWheelMaterial, [type.worldWidth * 0.68, 0.08, type.worldLength * 0.38], [0, 0.57 + type.worldHeight * 0.36, type.worldLength * 0.29]);
-        for (const side of [-1, 1]) {
-          addTrafficPart(vehicle, trafficBodyGeometry, trafficBodyMaterials[typeIndex], [0.12, type.worldHeight * 0.48, type.worldLength * 0.42], [side * type.worldWidth * 0.44, 0.43 + type.worldHeight * 0.58, type.worldLength * 0.29]);
-          addTrafficPart(vehicle, trafficBodyGeometry, trafficAccentMaterials[typeIndex], [0.18, 0.18, 0.08], [side * type.worldWidth * 0.31, 0.48 + type.worldHeight * 0.42, type.worldLength / 2 + 0.05]);
-        }
+      addTrafficPart(vehicle, trafficBodyGeometry, trafficUnderbodyMaterial, [type.worldWidth * 0.82, type.worldHeight * 0.18, type.worldLength * 0.9], [0, 0.27, 0]);
+      addTrafficPart(vehicle, trafficHullGeometry, trafficBodyMaterials[typeIndex], [type.worldWidth * 0.92, type.worldHeight * 0.48, type.worldLength * 0.9], [0, 0.34 + type.worldHeight * 0.24, 0]);
+      addTrafficPart(vehicle, trafficCabinGeometry, trafficCabinMaterial, [type.worldWidth * 0.72, type.worldHeight * type.cabinHeight, type.worldLength * type.cabinLength], [0, 0.34 + type.worldHeight * (0.62 + type.cabinHeight / 2), -type.worldLength * 0.08]);
+      addTrafficPart(vehicle, trafficFrontGeometry, trafficFrontMaterials[typeIndex], [type.worldWidth * 0.9, type.worldHeight * 0.78, 1], [0, 0.42 + type.worldHeight * 0.38, type.worldLength * 0.451]);
+      const skin = new THREE.Mesh(trafficSkinGeometries[typeIndex], trafficSkinMaterials[typeIndex]);
+      skin.name = `uv-skin-${type.name.toLowerCase().replaceAll(' ', '-')}`;
+      vehicle.add(skin);
+
+      if (type.headlights === 'bar') {
+        addTrafficPart(vehicle, trafficBodyGeometry, trafficHeadlightMaterial, [type.worldWidth * 0.72, 0.1, 0.06], [0, 0.44 + type.worldHeight * 0.42, type.worldLength * 0.46]);
       } else {
-        throw new Error(`Unknown traffic silhouette: ${type.silhouette}`);
+        for (const side of [-1, 1]) addTrafficPart(vehicle, trafficBodyGeometry, trafficHeadlightMaterial, [type.worldWidth * 0.22, 0.1, 0.06], [side * type.worldWidth * 0.29, 0.44 + type.worldHeight * 0.42, type.worldLength * 0.46]);
       }
 
       for (const side of [-1, 1]) {
@@ -898,7 +946,7 @@
           trafficRoot.add(mesh);
         }
         const distanceAhead = obstacleDistanceAhead(obstacle);
-        mesh.visible = distanceAhead > 2 && distanceAhead <= 76;
+        mesh.visible = distanceAhead > TRAFFIC_DESPAWN_DISTANCE && distanceAhead <= TRAFFIC_VISIBLE_DISTANCE;
         if (!mesh.visible) continue;
         const frame = courseFrameAt(riderProgress + distanceAhead);
         mesh.position.copy(frame.point).addScaledVector(frame.right, (obstacle.laneIndex - 1) * 3.2);
@@ -908,11 +956,9 @@
 
     const COUNTDOWN_SECONDS = 3;
     const GO_DISPLAY_SECONDS = 0.65;
-    const ENGINE_MIN_SPEED = 260;
-    const ENGINE_MAX_SPEED = 560;
     const state = {
       mode: 'ready', score: 0, best: Number(localStorage.getItem('tilt-rush-v2-best') || 0), lives: 3, clears: 0, jumps: 0, flow: 0,
-      elapsed: 0, speed: 260, spawnTimer: 1.1, spawnIndex: 0, roadOffset: 0, level: 0, previousLevel: 0, levelBlend: 1, levelDistance: 0, totalDistance: 0, levelFlash: 0, countdownRemaining: 0, countdownGoRemaining: 0,
+      elapsed: 0, speed: 260, spawnTimer: 0, spawnIndex: 0, roadOffset: 0, level: 0, previousLevel: 0, levelBlend: 1, levelDistance: 0, totalDistance: 0, levelFlash: 0, countdownRemaining: 0, countdownGoRemaining: 0,
       player: { x: 500, y: 590, width: 30, height: 104, lean: 0, jumpRemaining: 0, jumpCooldown: 0, invulnerable: 0, jumpPulse: 0 }, obstacles: [], particles: [], energyTrail: [], trailTimer: 0
     };
 
@@ -927,108 +973,11 @@
 
     function resetGame() {
       for (const obstacle of state.obstacles) removeTrafficMesh(obstacle);
-      Object.assign(state, { mode: 'countdown', score: 0, lives: 3, clears: 0, jumps: 0, flow: 0, elapsed: 0, speed: 260, spawnTimer: 1.1, spawnIndex: 0, roadOffset: 0, level: 0, previousLevel: 0, levelBlend: 1, levelDistance: 0, totalDistance: 0, levelFlash: 2.2, countdownRemaining: COUNTDOWN_SECONDS, countdownGoRemaining: 0, obstacles: [], particles: [], energyTrail: [], trailTimer: 0 });
+      Object.assign(state, { mode: 'countdown', score: 0, lives: 3, clears: 0, jumps: 0, flow: 0, elapsed: 0, speed: 260, spawnTimer: 0, spawnIndex: 0, roadOffset: 0, level: 0, previousLevel: 0, levelBlend: 1, levelDistance: 0, totalDistance: 0, levelFlash: 2.2, countdownRemaining: COUNTDOWN_SECONDS, countdownGoRemaining: 0, obstacles: [], particles: [], energyTrail: [], trailTimer: 0 });
       Object.assign(state.player, { x: 500, y: 590, lean: 0, jumpRemaining: 0, jumpHeight: 0, jumpCooldown: 0, invulnerable: 0, jumpPulse: 0 });
       normalizedSteering = 0;
       menu.hidden = true;
-      activateEngineAudio();
       render();
-    }
-
-    function ensureEngineGraph() {
-      if (audioContext) return true;
-      if (engineAudioUnavailable) return false;
-      const AudioContextClass = window.AudioContext || window.webkitAudioContext;
-      if (!AudioContextClass) {
-        engineAudioUnavailable = true;
-        engineAudioError = 'unsupported';
-        audioButton.disabled = true;
-        audioButton.textContent = 'No audio';
-        return false;
-      }
-      let context;
-      try {
-        context = new AudioContextClass();
-        const oscillator = context.createOscillator();
-        const filter = context.createBiquadFilter();
-        const gain = context.createGain();
-        oscillator.type = 'sawtooth';
-        filter.type = 'lowpass';
-        filter.Q.value = 0.8;
-        gain.gain.value = 0;
-        oscillator.connect(filter);
-        filter.connect(gain);
-        gain.connect(context.destination);
-        oscillator.start();
-        audioContext = context;
-        engineOscillator = oscillator;
-        engineFilter = filter;
-        engineGain = gain;
-        engineGraphCreations += 1;
-        return true;
-      } catch (error) {
-        context?.close().catch(() => {});
-        engineAudioUnavailable = true;
-        engineAudioError = error?.name || 'initialization-failed';
-        audioButton.disabled = true;
-        audioButton.textContent = 'No audio';
-        return false;
-      }
-    }
-
-    function syncEngineAudio() {
-      const speedRatio = Math.max(0, Math.min(1, (state.speed - ENGINE_MIN_SPEED) / (ENGINE_MAX_SPEED - ENGINE_MIN_SPEED)));
-      engineFrequencyTarget = 72 + speedRatio * 88;
-      const engineActive = (state.mode === 'countdown' || state.mode === 'playing') && audioContext?.state === 'running' && !engineAudioSuspendedForPage;
-      engineGainTarget = engineActive && !engineMuted ? 0.045 + speedRatio * 0.035 : 0;
-      if (!audioContext || !engineOscillator || !engineFilter || !engineGain || audioContext.state === 'closed') return;
-      const now = audioContext.currentTime;
-      const filterTarget = 420 + speedRatio * 480;
-      if (Math.abs(engineFrequencyTarget - engineAppliedFrequency) >= 0.25) {
-        engineOscillator.frequency.setTargetAtTime(engineFrequencyTarget, now, 0.08);
-        engineAppliedFrequency = engineFrequencyTarget;
-      }
-      if (Math.abs(filterTarget - engineAppliedFilter) >= 1) {
-        engineFilter.frequency.setTargetAtTime(filterTarget, now, 0.1);
-        engineAppliedFilter = filterTarget;
-      }
-      if (Math.abs(engineGainTarget - engineAppliedGain) >= 0.0005) {
-        engineGain.gain.setTargetAtTime(engineGainTarget, now, 0.045);
-        engineAppliedGain = engineGainTarget;
-      }
-    }
-
-    function activateEngineAudio() {
-      if (!ensureEngineGraph()) return;
-      engineAudioError = '';
-      engineAudioSuspendedForPage = false;
-      if (audioContext.state !== 'running' && audioContext.state !== 'closed') {
-        audioContext.resume().then(syncEngineAudio).catch(error => { engineAudioError = error?.name || 'resume-failed'; });
-      }
-      syncEngineAudio();
-    }
-
-    function toggleEngineMute() {
-      engineMuted = !engineMuted;
-      audioButton.setAttribute('aria-pressed', String(engineMuted));
-      audioButton.setAttribute('aria-label', engineMuted ? 'Unmute engine' : 'Mute engine');
-      audioButton.textContent = engineMuted ? 'Unmute' : 'Mute';
-      if (engineMuted && audioContext && engineGain && audioContext.state !== 'closed') {
-        engineGainTarget = 0;
-        engineGain.gain.setValueAtTime(0, audioContext.currentTime);
-        engineAppliedGain = 0;
-      } else {
-        syncEngineAudio();
-      }
-    }
-
-    function suspendEngineAudio() {
-      if (!audioContext || audioContext.state === 'closed') return;
-      engineAudioSuspendedForPage = true;
-      engineGainTarget = 0;
-      engineGain.gain.setValueAtTime(0, audioContext.currentTime);
-      engineAppliedGain = -1;
-      audioContext.suspend().catch(() => {});
     }
 
     function finishGame() {
@@ -1052,7 +1001,7 @@
     function spawnObstacle() {
       const stage = courseStages[state.level];
       const lanes = stage.pattern[state.spawnIndex++ % stage.pattern.length];
-      const y = -110;
+      const y = state.player.y - TRAFFIC_SPAWN_DISTANCE / TRAFFIC_WORLD_DISTANCE_PER_LOGICAL;
       for (const laneIndex of lanes) {
         const type = (state.spawnIndex + laneIndex - 1) % trafficTypes.length; const traffic = trafficTypes[type];
         state.obstacles.push({ x: roadCenter(y) + (laneIndex - 1) * 150, y, width: traffic.width, height: traffic.height, type, laneIndex });
@@ -1223,7 +1172,6 @@
       raceCountdown.dataset.phase = state.mode === 'countdown' ? 'countdown' : 'go';
       if (countdownValue.textContent !== countdownLabel) countdownValue.textContent = countdownLabel;
       syncStageEnvironment();
-      syncEngineAudio();
       syncTrafficMeshes();
       threeRenderer.render(threeScene, threeCamera);
       updateHud();
@@ -1383,7 +1331,6 @@
     }
 
     cameraButton.addEventListener('click', toggleCamera);
-    audioButton.addEventListener('click', toggleEngineMute);
     cameraResumeButton.addEventListener('click', async () => {
       if (cameraState !== 'waiting' || !cameraStream) return;
       const requestId = cameraRequestId;
@@ -1392,7 +1339,6 @@
     });
     cameraCancelButton.addEventListener('click', () => { disableCamera(); updateInputControls(); });
     addEventListener('pagehide', stopCamera);
-    addEventListener('pagehide', suspendEngineAudio);
     enableCamera();
 
     centerButton.addEventListener('click', () => {
@@ -1416,13 +1362,13 @@
       const previousEnvironment = stageEnvironment(courseStages[state.previousLevel]);
       return JSON.stringify({
         coordinateSystem: 'logical 1000x700; origin top-left; x right; y down', mode: state.mode,
-        version: 'v2', rendering: { renderer: 'three', camera: threeCamera.type, trafficMeshes: trafficRoot.children.length, trafficTemplates: trafficTemplates.length, trafficSilhouettes: trafficTypes.map(type => type.silhouette), courseControls: courseCenterlineControls.length, roadSurface: 'wet-asphalt-v1', roadUvs: road.geometry.getAttribute('uv').count, stageOneRoadside: { guardrails: stageOneGuardrails.count, lightPoles: stageOneLightPoles.count }, stageTwoDockside: { roots: threeScene.children.filter(child => child.name === 'stage-two-dockside').length, rootChildren: docksideRoadside.children.length, apronSlabs: docksideAprons.count, stacks: docksideContainerSites.length, containers: docksideContainers.count, cranes: docksideCraneMasts.count, cranePools: docksideCranePools.length, worldStart: +stageTwoWorldStart.toFixed(3), worldEnd: +stageTwoWorldEnd.toFixed(3), roadHalfWidth: 5, nominalRoadEdgeGap: +Math.min(docksideNominalPropRoadEdgeGap, docksideNominalApronRoadEdgeGap).toFixed(2), nominalPropRoadEdgeGap: +docksideNominalPropRoadEdgeGap.toFixed(2), nominalApronRoadEdgeGap: +docksideNominalApronRoadEdgeGap.toFixed(2), stackAnchors: docksideContainerSites.map(site => +site.distance.toFixed(3)), craneAnchors: docksideCranePlacements.map(crane => +crane.distance.toFixed(3)) }, stageThreeNeon: { roots: threeScene.children.filter(child => child.name === 'stage-three-neon-tunnel').length, rootChildren: neonTunnel.children.length, frames: neonFrameDistances.length, uprights: neonUprights.count, crossbars: neonCrossbars.count, lightStrips: neonCyanStrips.count + neonMagentaStrips.count, signs: neonCyanSigns.count + neonMagentaSigns.count, signPools: 2, worldStart: +stageThreeWorldStart.toFixed(3), worldEnd: +stageThreeWorldEnd.toFixed(3), roadHalfWidth: 5, nominalUprightRoadEdgeGap: +neonNominalUprightRoadEdgeGap.toFixed(2), nominalSignRoadEdgeGap: +neonNominalSignRoadEdgeGap.toFixed(2), frameAnchors: neonFrameDistances.map(distance => +distance.toFixed(3)) }, stageFourSkyway: { roots: threeScene.children.filter(child => child.name === 'stage-four-skyway').length, rootChildren: skywayRoadside.children.length, finSites: skywayFinDistances.length, fins: skywayFins.count, beaconSites: skywayBeaconDistances.length, beaconBases: skywayBeaconBases.count, beaconLights: skywayBeaconLights.count, worldStart: +stageFourWorldStart.toFixed(3), worldEnd: +stageFourWorldEnd.toFixed(3), roadHalfWidth: 5, nominalFinRoadEdgeGap: +skywayNominalFinRoadEdgeGap.toFixed(2), nominalBeaconRoadEdgeGap: +skywayNominalBeaconRoadEdgeGap.toFixed(2), finAnchors: skywayFinDistances.map(distance => +distance.toFixed(3)), beaconAnchors: skywayBeaconDistances.map(distance => +distance.toFixed(3)) } },
+        version: 'v2', rendering: { renderer: 'three', camera: threeCamera.type, trafficMeshes: trafficRoot.children.length, trafficTemplates: trafficTemplates.length, trafficTemplateParts: trafficTemplates.map(template => template.children.length), trafficSilhouettes: trafficTypes.map(type => type.silhouette), trafficUvTextures: trafficTypes.map(type => type.src), trafficTexturesLoaded: trafficTextures.map(texture => Boolean(texture.image?.complete && texture.image.naturalWidth)), trafficSpawnDistance: TRAFFIC_SPAWN_DISTANCE, trafficVisibleDistance: TRAFFIC_VISIBLE_DISTANCE, courseControls: courseCenterlineControls.length, roadSurface: 'wet-asphalt-v1', roadUvs: road.geometry.getAttribute('uv').count, stageOneRoadside: { guardrails: stageOneGuardrails.count, lightPoles: stageOneLightPoles.count }, stageTwoDockside: { roots: threeScene.children.filter(child => child.name === 'stage-two-dockside').length, rootChildren: docksideRoadside.children.length, apronSlabs: docksideAprons.count, stacks: docksideContainerSites.length, containers: docksideContainers.count, cranes: docksideCraneMasts.count, cranePools: docksideCranePools.length, worldStart: +stageTwoWorldStart.toFixed(3), worldEnd: +stageTwoWorldEnd.toFixed(3), roadHalfWidth: 5, nominalRoadEdgeGap: +Math.min(docksideNominalPropRoadEdgeGap, docksideNominalApronRoadEdgeGap).toFixed(2), nominalPropRoadEdgeGap: +docksideNominalPropRoadEdgeGap.toFixed(2), nominalApronRoadEdgeGap: +docksideNominalApronRoadEdgeGap.toFixed(2), stackAnchors: docksideContainerSites.map(site => +site.distance.toFixed(3)), craneAnchors: docksideCranePlacements.map(crane => +crane.distance.toFixed(3)) }, stageThreeNeon: { roots: threeScene.children.filter(child => child.name === 'stage-three-neon-tunnel').length, rootChildren: neonTunnel.children.length, frames: neonFrameDistances.length, uprights: neonUprights.count, crossbars: neonCrossbars.count, lightStrips: neonCyanStrips.count + neonMagentaStrips.count, signs: neonCyanSigns.count + neonMagentaSigns.count, signPools: 2, worldStart: +stageThreeWorldStart.toFixed(3), worldEnd: +stageThreeWorldEnd.toFixed(3), roadHalfWidth: 5, nominalUprightRoadEdgeGap: +neonNominalUprightRoadEdgeGap.toFixed(2), nominalSignRoadEdgeGap: +neonNominalSignRoadEdgeGap.toFixed(2), frameAnchors: neonFrameDistances.map(distance => +distance.toFixed(3)) }, stageFourSkyway: { roots: threeScene.children.filter(child => child.name === 'stage-four-skyway').length, rootChildren: skywayRoadside.children.length, finSites: skywayFinDistances.length, fins: skywayFins.count, beaconSites: skywayBeaconDistances.length, beaconBases: skywayBeaconBases.count, beaconLights: skywayBeaconLights.count, worldStart: +stageFourWorldStart.toFixed(3), worldEnd: +stageFourWorldEnd.toFixed(3), roadHalfWidth: 5, nominalFinRoadEdgeGap: +skywayNominalFinRoadEdgeGap.toFixed(2), nominalBeaconRoadEdgeGap: +skywayNominalBeaconRoadEdgeGap.toFixed(2), finAnchors: skywayFinDistances.map(distance => +distance.toFixed(3)), beaconAnchors: skywayBeaconDistances.map(distance => +distance.toFixed(3)) } },
         environment: { previous: previousEnvironment.id, current: activeEnvironmentPalette, propSet: stage.environment?.propSet || 'none', blend: +activeEnvironmentBlend.toFixed(3), background: `#${environmentBackground.getHexString()}`, fog: `#${environmentFog.getHexString()}`, sky: `#${environmentSky.getHexString()}`, ground: `#${environmentGround.getHexString()}`, key: `#${environmentKey.getHexString()}`, keyIntensity: +activeEnvironmentKeyIntensity.toFixed(3) },
         course: { segment: course.segment, progress: +course.progress.toFixed(1), length: COURSE_LENGTH, centerX: +course.x.toFixed(2), elevation: +course.y.toFixed(2) },
         player: { type: 'light-cycle', x: +state.player.x.toFixed(1), y: state.player.y, courseLateral: +courseLateral.toFixed(2), steering: +normalizedSteering.toFixed(2), lean: +state.player.lean.toFixed(2), cockpitLean: +(-state.player.lean * 0.16).toFixed(3), horizonRoll: 0, jumpHeight: +(state.player.jumpHeight || 0).toFixed(1), jumpCooldown: +state.player.jumpCooldown.toFixed(2), invulnerable: +state.player.invulnerable.toFixed(2), trailPoints: state.energyTrail.length },
-        level: { number: stage.index + 1, name: stage.name, distance: Math.floor(state.levelDistance), target: stage.length, startDistance: stage.startDistance, endDistance: stage.endDistance, roadBlend: +state.levelBlend.toFixed(2) }, roadCenterAtPlayer: +roadCenter(state.player.y).toFixed(1), obstacles: state.obstacles.map(o => ({ type: trafficTypes[o.type].name, silhouette: trafficTypes[o.type].silhouette, lane: o.laneIndex, x: +o.x.toFixed(1), y: +o.y.toFixed(1), distanceAhead: +obstacleDistanceAhead(o).toFixed(1), rendered: Boolean(trafficMeshes.get(o)?.visible) })), score: Math.floor(state.score),
+        level: { number: stage.index + 1, name: stage.name, distance: Math.floor(state.levelDistance), target: stage.length, startDistance: stage.startDistance, endDistance: stage.endDistance, roadBlend: +state.levelBlend.toFixed(2) }, roadCenterAtPlayer: +roadCenter(state.player.y).toFixed(1), obstacles: state.obstacles.map(o => ({ type: trafficTypes[o.type].name, silhouette: trafficTypes[o.type].silhouette, texture: trafficTypes[o.type].src, lane: o.laneIndex, x: +o.x.toFixed(1), y: +o.y.toFixed(1), distanceAhead: +obstacleDistanceAhead(o).toFixed(1), secondsToPlayer: +Math.max(0, obstacleDistanceAhead(o) * COURSE_DISTANCE_SCALE / state.speed).toFixed(2), rendered: Boolean(trafficMeshes.get(o)?.visible) })), score: Math.floor(state.score),
         best: state.best, lives: state.lives, clears: state.clears, jumps: state.jumps, speed: Math.round(state.speed), flow: { chain: state.flow, multiplier: +flowMultiplier().toFixed(1) }, countdown: { remaining: +state.countdownRemaining.toFixed(3), goRemaining: +state.countdownGoRemaining.toFixed(3), label: countdownValue.textContent, visible: !raceCountdown.hidden },
-        connected: cameraState === 'ready', input: cameraState === 'ready' ? 'camera' : 'keyboard', camera: { state: cameraState, roll: +cameraRoll.toFixed(2), pitch: +cameraPitch.toFixed(3), pitchDelta: +cameraPitchDelta.toFixed(3), tilt: +cameraTilt.toFixed(2), calibrationQuality: cameraPreview.dataset.quality, calibrationProgress: Math.min(100, Math.round(calibrationStableMs / 1200 * 100)) }, audio: { context: audioContext?.state || 'uninitialized', graphs: engineGraphCreations, muted: engineMuted, frequency: +engineFrequencyTarget.toFixed(1), gain: +engineGainTarget.toFixed(3), error: engineAudioError }, view: 'first-person', fullscreen: Boolean(document.fullscreenElement)
+        connected: cameraState === 'ready', input: cameraState === 'ready' ? 'camera' : 'keyboard', camera: { state: cameraState, roll: +cameraRoll.toFixed(2), pitch: +cameraPitch.toFixed(3), pitchDelta: +cameraPitchDelta.toFixed(3), tilt: +cameraTilt.toFixed(2), calibrationQuality: cameraPreview.dataset.quality, calibrationProgress: Math.min(100, Math.round(calibrationStableMs / 1200 * 100)) }, audio: { enabled: false, context: 'removed', graphs: 0 }, view: 'first-person', fullscreen: Boolean(document.fullscreenElement)
       });
     };
     window.advanceTime = ms => {

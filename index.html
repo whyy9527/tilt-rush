@@ -176,6 +176,7 @@
       },
       {
         name: 'Skyway Hooks', subtitle: 'Commit, jump, recover', length: 5400, curve: 'hooks', interval: .84, pattern: [[0, 2], [1], [0, 1], [2], [1, 2], [0], [0, 2], [1]],
+        environment: Object.freeze({ palette: 'skyway', propSet: 'skyway' }),
         centerline: [
           { x: 12, y: 11, z: -245, segment: 'crest' },
           { x: 24, y: 12, z: -275, segment: 'crest' },
@@ -256,7 +257,8 @@
     const environmentPalettes = Object.freeze({
       night: Object.freeze({ id: 'night', background: new THREE.Color(0x070b14), fog: new THREE.Color(0x070b14), sky: new THREE.Color(0x8fc8ff), ground: new THREE.Color(0x24120c), key: new THREE.Color(0xbdefff), keyIntensity: 0 }),
       dockside: Object.freeze({ id: 'dockside', background: new THREE.Color(0x06131b), fog: new THREE.Color(0x0a2630), sky: new THREE.Color(0x6fd7dd), ground: new THREE.Color(0x0b3438), key: new THREE.Color(0xa9f2e8), keyIntensity: 1.05 }),
-      neon: Object.freeze({ id: 'neon', background: new THREE.Color(0x10071c), fog: new THREE.Color(0x210b32), sky: new THREE.Color(0xff4fd8), ground: new THREE.Color(0x120b3f), key: new THREE.Color(0x43f7ff), keyIntensity: 1.25 })
+      neon: Object.freeze({ id: 'neon', background: new THREE.Color(0x10071c), fog: new THREE.Color(0x210b32), sky: new THREE.Color(0xff4fd8), ground: new THREE.Color(0x120b3f), key: new THREE.Color(0x43f7ff), keyIntensity: 1.25 }),
+      skyway: Object.freeze({ id: 'skyway', background: new THREE.Color(0x16314a), fog: new THREE.Color(0x3a6b82), sky: new THREE.Color(0xd8f6ff), ground: new THREE.Color(0x18344f), key: new THREE.Color(0xffe0a3), keyIntensity: 1.5 })
     });
     const environmentBackground = new THREE.Color();
     const environmentFog = new THREE.Color();
@@ -656,18 +658,71 @@
     const neonNominalUprightRoadEdgeGap = 6.3 - 0.44 / 2 - 5;
     const neonNominalSignRoadEdgeGap = 7.7 - 2.2 / 2 - 5;
 
-    const roadsideGeometry = new THREE.BoxGeometry(0.14, 1.25, 0.14);
-    const roadsideMaterial = new THREE.MeshStandardMaterial({ color: 0xffb35a, emissive: 0x6b2b08, emissiveIntensity: 1.2 });
-    for (let distance = 10; distance < COURSE_GEOMETRY_LENGTH; distance += 14) {
-      if (distance < stageThreeWorldEnd) continue;
-      const frame = courseFrameAt(distance);
+    const stageFourWorldStart = courseStages[3].startDistance / COURSE_DISTANCE_SCALE;
+    const stageFourWorldEnd = courseStages[3].endDistance / COURSE_DISTANCE_SCALE;
+    const skywayRoadside = new THREE.Group();
+    skywayRoadside.name = 'stage-four-skyway';
+    threeScene.add(skywayRoadside);
+    const skywayTransform = new THREE.Object3D();
+    const skywayFinDistances = [];
+    for (let distance = stageFourWorldStart + 3; distance <= stageFourWorldEnd - 3; distance += 6.5) skywayFinDistances.push(distance);
+    const skywayBeaconDistances = skywayFinDistances.filter((_, index) => index % 2 === 0);
+
+    const skywayFinMaterial = new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0x173c55, emissiveIntensity: 0.82, roughness: 0.34, metalness: 0.68 });
+    const skywayBeaconBaseMaterial = new THREE.MeshStandardMaterial({ color: 0x29465d, roughness: 0.42, metalness: 0.76 });
+    const skywayBeaconLightMaterial = new THREE.MeshStandardMaterial({ color: 0xffd16a, emissive: 0xff6a18, emissiveIntensity: 4.2, roughness: 0.18 });
+    const skywayFins = new THREE.InstancedMesh(new THREE.BoxGeometry(0.28, 1.8, 2.6), skywayFinMaterial, skywayFinDistances.length * 2);
+    const skywayBeaconBases = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.2, 0.24, 0.7, 6), skywayBeaconBaseMaterial, skywayBeaconDistances.length * 2);
+    const skywayBeaconLights = new THREE.InstancedMesh(new THREE.SphereGeometry(0.2, 8, 6), skywayBeaconLightMaterial, skywayBeaconDistances.length * 2);
+    skywayFins.name = 'skyway-barrier-fin-pool';
+    skywayBeaconBases.name = 'skyway-beacon-base-pool';
+    skywayBeaconLights.name = 'skyway-beacon-light-pool';
+    const skywayFinColors = [new THREE.Color(0x9fd6e6), new THREE.Color(0x547fa4)];
+    let skywayFinIndex = 0;
+    for (let index = 0; index < skywayFinDistances.length; index++) {
+      const frame = courseFrameAt(skywayFinDistances[index]);
+      skywayTransform.rotation.set(0, Math.atan2(frame.tangent.x, -frame.tangent.z), 0);
+      skywayTransform.quaternion.setFromEuler(skywayTransform.rotation);
+      skywayTransform.scale.set(1, 1, 1);
       for (const side of [-1, 1]) {
-        const roadsideMarker = new THREE.Mesh(roadsideGeometry, roadsideMaterial);
-        roadsideMarker.position.copy(frame.point).addScaledVector(frame.right, side * 5.55);
-        roadsideMarker.position.y += 0.62;
-        threeScene.add(roadsideMarker);
+        skywayTransform.position.copy(frame.point).addScaledVector(frame.right, side * 6);
+        skywayTransform.position.y += 0.9;
+        skywayTransform.updateMatrix();
+        skywayFins.setMatrixAt(skywayFinIndex, skywayTransform.matrix);
+        skywayFins.setColorAt(skywayFinIndex, skywayFinColors[(index + (side === 1 ? 1 : 0)) % skywayFinColors.length]);
+        skywayFinIndex += 1;
       }
     }
+    skywayFins.instanceMatrix.needsUpdate = true;
+    skywayFins.instanceColor.needsUpdate = true;
+    skywayFins.computeBoundingSphere();
+
+    let skywayBeaconIndex = 0;
+    for (const distance of skywayBeaconDistances) {
+      const frame = courseFrameAt(distance);
+      skywayTransform.rotation.set(0, Math.atan2(frame.tangent.x, -frame.tangent.z), 0);
+      skywayTransform.quaternion.setFromEuler(skywayTransform.rotation);
+      skywayTransform.scale.set(1, 1, 1);
+      for (const side of [-1, 1]) {
+        skywayTransform.position.copy(frame.point).addScaledVector(frame.right, side * 5.68);
+        skywayTransform.position.y += 0.35;
+        skywayTransform.updateMatrix();
+        skywayBeaconBases.setMatrixAt(skywayBeaconIndex, skywayTransform.matrix);
+
+        skywayTransform.position.copy(frame.point).addScaledVector(frame.right, side * 5.68);
+        skywayTransform.position.y += 0.84;
+        skywayTransform.updateMatrix();
+        skywayBeaconLights.setMatrixAt(skywayBeaconIndex, skywayTransform.matrix);
+        skywayBeaconIndex += 1;
+      }
+    }
+    for (const pool of [skywayBeaconBases, skywayBeaconLights]) {
+      pool.instanceMatrix.needsUpdate = true;
+      pool.computeBoundingSphere();
+    }
+    skywayRoadside.add(skywayFins, skywayBeaconBases, skywayBeaconLights);
+    const skywayNominalFinRoadEdgeGap = 6 - 0.28 / 2 - 5;
+    const skywayNominalBeaconRoadEdgeGap = 5.68 - 0.2 - 5;
 
     threeScene.add(threeCamera);
     const cockpit = new THREE.Group();
@@ -1361,7 +1416,7 @@
       const previousEnvironment = stageEnvironment(courseStages[state.previousLevel]);
       return JSON.stringify({
         coordinateSystem: 'logical 1000x700; origin top-left; x right; y down', mode: state.mode,
-        version: 'v2', rendering: { renderer: 'three', camera: threeCamera.type, trafficMeshes: trafficRoot.children.length, trafficTemplates: trafficTemplates.length, trafficSilhouettes: trafficTypes.map(type => type.silhouette), courseControls: courseCenterlineControls.length, roadSurface: 'wet-asphalt-v1', roadUvs: road.geometry.getAttribute('uv').count, stageOneRoadside: { guardrails: stageOneGuardrails.count, lightPoles: stageOneLightPoles.count }, stageTwoDockside: { roots: threeScene.children.filter(child => child.name === 'stage-two-dockside').length, rootChildren: docksideRoadside.children.length, apronSlabs: docksideAprons.count, stacks: docksideContainerSites.length, containers: docksideContainers.count, cranes: docksideCraneMasts.count, cranePools: docksideCranePools.length, worldStart: +stageTwoWorldStart.toFixed(3), worldEnd: +stageTwoWorldEnd.toFixed(3), roadHalfWidth: 5, nominalRoadEdgeGap: +Math.min(docksideNominalPropRoadEdgeGap, docksideNominalApronRoadEdgeGap).toFixed(2), nominalPropRoadEdgeGap: +docksideNominalPropRoadEdgeGap.toFixed(2), nominalApronRoadEdgeGap: +docksideNominalApronRoadEdgeGap.toFixed(2), stackAnchors: docksideContainerSites.map(site => +site.distance.toFixed(3)), craneAnchors: docksideCranePlacements.map(crane => +crane.distance.toFixed(3)) }, stageThreeNeon: { roots: threeScene.children.filter(child => child.name === 'stage-three-neon-tunnel').length, rootChildren: neonTunnel.children.length, frames: neonFrameDistances.length, uprights: neonUprights.count, crossbars: neonCrossbars.count, lightStrips: neonCyanStrips.count + neonMagentaStrips.count, signs: neonCyanSigns.count + neonMagentaSigns.count, signPools: 2, worldStart: +stageThreeWorldStart.toFixed(3), worldEnd: +stageThreeWorldEnd.toFixed(3), roadHalfWidth: 5, nominalUprightRoadEdgeGap: +neonNominalUprightRoadEdgeGap.toFixed(2), nominalSignRoadEdgeGap: +neonNominalSignRoadEdgeGap.toFixed(2), frameAnchors: neonFrameDistances.map(distance => +distance.toFixed(3)) } },
+        version: 'v2', rendering: { renderer: 'three', camera: threeCamera.type, trafficMeshes: trafficRoot.children.length, trafficTemplates: trafficTemplates.length, trafficSilhouettes: trafficTypes.map(type => type.silhouette), courseControls: courseCenterlineControls.length, roadSurface: 'wet-asphalt-v1', roadUvs: road.geometry.getAttribute('uv').count, stageOneRoadside: { guardrails: stageOneGuardrails.count, lightPoles: stageOneLightPoles.count }, stageTwoDockside: { roots: threeScene.children.filter(child => child.name === 'stage-two-dockside').length, rootChildren: docksideRoadside.children.length, apronSlabs: docksideAprons.count, stacks: docksideContainerSites.length, containers: docksideContainers.count, cranes: docksideCraneMasts.count, cranePools: docksideCranePools.length, worldStart: +stageTwoWorldStart.toFixed(3), worldEnd: +stageTwoWorldEnd.toFixed(3), roadHalfWidth: 5, nominalRoadEdgeGap: +Math.min(docksideNominalPropRoadEdgeGap, docksideNominalApronRoadEdgeGap).toFixed(2), nominalPropRoadEdgeGap: +docksideNominalPropRoadEdgeGap.toFixed(2), nominalApronRoadEdgeGap: +docksideNominalApronRoadEdgeGap.toFixed(2), stackAnchors: docksideContainerSites.map(site => +site.distance.toFixed(3)), craneAnchors: docksideCranePlacements.map(crane => +crane.distance.toFixed(3)) }, stageThreeNeon: { roots: threeScene.children.filter(child => child.name === 'stage-three-neon-tunnel').length, rootChildren: neonTunnel.children.length, frames: neonFrameDistances.length, uprights: neonUprights.count, crossbars: neonCrossbars.count, lightStrips: neonCyanStrips.count + neonMagentaStrips.count, signs: neonCyanSigns.count + neonMagentaSigns.count, signPools: 2, worldStart: +stageThreeWorldStart.toFixed(3), worldEnd: +stageThreeWorldEnd.toFixed(3), roadHalfWidth: 5, nominalUprightRoadEdgeGap: +neonNominalUprightRoadEdgeGap.toFixed(2), nominalSignRoadEdgeGap: +neonNominalSignRoadEdgeGap.toFixed(2), frameAnchors: neonFrameDistances.map(distance => +distance.toFixed(3)) }, stageFourSkyway: { roots: threeScene.children.filter(child => child.name === 'stage-four-skyway').length, rootChildren: skywayRoadside.children.length, finSites: skywayFinDistances.length, fins: skywayFins.count, beaconSites: skywayBeaconDistances.length, beaconBases: skywayBeaconBases.count, beaconLights: skywayBeaconLights.count, worldStart: +stageFourWorldStart.toFixed(3), worldEnd: +stageFourWorldEnd.toFixed(3), roadHalfWidth: 5, nominalFinRoadEdgeGap: +skywayNominalFinRoadEdgeGap.toFixed(2), nominalBeaconRoadEdgeGap: +skywayNominalBeaconRoadEdgeGap.toFixed(2), finAnchors: skywayFinDistances.map(distance => +distance.toFixed(3)), beaconAnchors: skywayBeaconDistances.map(distance => +distance.toFixed(3)) } },
         environment: { previous: previousEnvironment.id, current: activeEnvironmentPalette, propSet: stage.environment?.propSet || 'none', blend: +activeEnvironmentBlend.toFixed(3), background: `#${environmentBackground.getHexString()}`, fog: `#${environmentFog.getHexString()}`, sky: `#${environmentSky.getHexString()}`, ground: `#${environmentGround.getHexString()}`, key: `#${environmentKey.getHexString()}`, keyIntensity: +activeEnvironmentKeyIntensity.toFixed(3) },
         course: { segment: course.segment, progress: +course.progress.toFixed(1), length: COURSE_LENGTH, centerX: +course.x.toFixed(2), elevation: +course.y.toFixed(2) },
         player: { type: 'light-cycle', x: +state.player.x.toFixed(1), y: state.player.y, courseLateral: +courseLateral.toFixed(2), steering: +normalizedSteering.toFixed(2), lean: +state.player.lean.toFixed(2), cockpitLean: +(-state.player.lean * 0.16).toFixed(3), horizonRoll: 0, jumpHeight: +(state.player.jumpHeight || 0).toFixed(1), jumpCooldown: +state.player.jumpCooldown.toFixed(2), invulnerable: +state.player.invulnerable.toFixed(2), trailPoints: state.energyTrail.length },

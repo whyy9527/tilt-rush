@@ -156,6 +156,7 @@
       },
       {
         name: 'Dockside Sweep', subtitle: 'Read the long bend', length: 3600, curve: 'sweep', interval: 1.12, pattern: [[0], [2], [1], [0, 1], [2], [1]],
+        environment: Object.freeze({ palette: 'dockside', propSet: 'dockside' }),
         centerline: [
           { x: 1, y: 0, z: -60, segment: 'curve' },
           { x: 7, y: 0, z: -90, segment: 'curve' },
@@ -248,6 +249,46 @@
 
     const hemisphereLight = new THREE.HemisphereLight(0x8fc8ff, 0x24120c, 2.2);
     threeScene.add(hemisphereLight);
+    const courseKeyLight = new THREE.DirectionalLight(0xbdefff, 0);
+    courseKeyLight.position.set(28, 42, 18);
+    threeScene.add(courseKeyLight);
+    const environmentPalettes = Object.freeze({
+      night: Object.freeze({ id: 'night', background: new THREE.Color(0x070b14), fog: new THREE.Color(0x070b14), sky: new THREE.Color(0x8fc8ff), ground: new THREE.Color(0x24120c), key: new THREE.Color(0xbdefff), keyIntensity: 0 }),
+      dockside: Object.freeze({ id: 'dockside', background: new THREE.Color(0x06131b), fog: new THREE.Color(0x0a2630), sky: new THREE.Color(0x6fd7dd), ground: new THREE.Color(0x0b3438), key: new THREE.Color(0xa9f2e8), keyIntensity: 1.05 })
+    });
+    const environmentBackground = new THREE.Color();
+    const environmentFog = new THREE.Color();
+    const environmentSky = new THREE.Color();
+    const environmentKey = new THREE.Color();
+    const environmentGround = new THREE.Color();
+    let activeEnvironmentPalette = 'night';
+    let activeEnvironmentBlend = 1;
+    let activeEnvironmentKeyIntensity = 0;
+
+    function stageEnvironment(stage) {
+      return environmentPalettes[stage.environment?.palette] || environmentPalettes.night;
+    }
+
+    function syncStageEnvironment() {
+      const previous = stageEnvironment(courseStages[state.previousLevel]);
+      const current = stageEnvironment(courseStages[state.level]);
+      const linearBlend = state.previousLevel === state.level ? 1 : state.levelBlend;
+      const blend = linearBlend * linearBlend * (3 - 2 * linearBlend);
+      environmentBackground.lerpColors(previous.background, current.background, blend);
+      environmentFog.lerpColors(previous.fog, current.fog, blend);
+      environmentSky.lerpColors(previous.sky, current.sky, blend);
+      environmentKey.lerpColors(previous.key, current.key, blend);
+      environmentGround.lerpColors(previous.ground, current.ground, blend);
+      threeScene.background.copy(environmentBackground);
+      threeScene.fog.color.copy(environmentFog);
+      hemisphereLight.color.copy(environmentSky);
+      hemisphereLight.groundColor.copy(environmentGround);
+      courseKeyLight.color.copy(environmentKey);
+      courseKeyLight.intensity = THREE.MathUtils.lerp(previous.keyIntensity, current.keyIntensity, blend);
+      activeEnvironmentPalette = current.id;
+      activeEnvironmentBlend = blend;
+      activeEnvironmentKeyIntensity = courseKeyLight.intensity;
+    }
 
     const COURSE_LENGTH = 370;
     const COURSE_DISTANCE_SCALE = TOTAL_COURSE_DISTANCE / COURSE_LENGTH;
@@ -413,10 +454,138 @@
     stageOneLightHeads.instanceMatrix.needsUpdate = true;
     stageOneRoadside.add(stageOneLightPoles, stageOneLightHeads);
 
+    const stageTwoWorldStart = courseStages[1].startDistance / COURSE_DISTANCE_SCALE;
+    const stageTwoWorldEnd = courseStages[1].endDistance / COURSE_DISTANCE_SCALE;
+    const docksideRoadside = new THREE.Group();
+    docksideRoadside.name = 'stage-two-dockside';
+    threeScene.add(docksideRoadside);
+    const docksideTransform = new THREE.Object3D();
+
+    const docksideApronDistances = [];
+    for (let distance = stageTwoWorldStart + 2.7; distance <= stageTwoWorldEnd - 2.7; distance += 5) docksideApronDistances.push(distance);
+    const docksideApronGeometry = new THREE.BoxGeometry(8.2, 0.16, 5.4);
+    const docksideApronMaterial = new THREE.MeshStandardMaterial({ color: 0x101f27, roughness: 0.88, metalness: 0.22 });
+    const docksideAprons = new THREE.InstancedMesh(docksideApronGeometry, docksideApronMaterial, docksideApronDistances.length * 2);
+    docksideAprons.name = 'dockside-apron-pool';
+    let docksideApronIndex = 0;
+    for (const distance of docksideApronDistances) {
+      const frame = courseFrameAt(distance);
+      for (const side of [-1, 1]) {
+        docksideTransform.position.copy(frame.point).addScaledVector(frame.right, side * 9.4);
+        docksideTransform.position.y -= 0.12;
+        docksideTransform.quaternion.setFromUnitVectors(courseForward, frame.tangent);
+        docksideTransform.scale.set(1, 1, 1);
+        docksideTransform.updateMatrix();
+        docksideAprons.setMatrixAt(docksideApronIndex++, docksideTransform.matrix);
+      }
+    }
+    docksideAprons.instanceMatrix.needsUpdate = true;
+    docksideAprons.computeBoundingSphere();
+    docksideRoadside.add(docksideAprons);
+
+    const docksideContainerSites = [];
+    const docksideContainerPlacements = [];
+    let containerSiteIndex = 0;
+    for (let distance = stageTwoWorldStart + 7; distance < stageTwoWorldEnd - 5; distance += 13) {
+      const side = containerSiteIndex % 2 === 0 ? -1 : 1;
+      const stackHeight = 2 + (containerSiteIndex % 3 === 1 ? 1 : 0);
+      docksideContainerSites.push({ distance, side, stackHeight });
+      for (let column = 0; column < 2; column++) {
+        const columnHeight = Math.max(1, stackHeight - (column === 1 && containerSiteIndex % 2 === 1 ? 1 : 0));
+        for (let layer = 0; layer < columnHeight; layer++) {
+          docksideContainerPlacements.push({
+            distance: distance + column * 0.85,
+            lateral: side * (8.4 + column * 2.9),
+            layer
+          });
+        }
+      }
+      containerSiteIndex += 1;
+    }
+    const docksideContainerGeometry = new THREE.BoxGeometry(2.6, 1.18, 5.2);
+    const docksideContainerMaterial = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.58, metalness: 0.48 });
+    const docksideContainerColors = [new THREE.Color(0x238b96), new THREE.Color(0x406f88), new THREE.Color(0xb45f3c)];
+    const docksideContainers = new THREE.InstancedMesh(docksideContainerGeometry, docksideContainerMaterial, docksideContainerPlacements.length);
+    docksideContainers.name = 'dockside-container-pool';
+    for (let index = 0; index < docksideContainerPlacements.length; index++) {
+      const placement = docksideContainerPlacements[index];
+      const frame = courseFrameAt(placement.distance);
+      docksideTransform.position.copy(frame.point).addScaledVector(frame.right, placement.lateral);
+      docksideTransform.position.y += 0.59 + placement.layer * 1.22;
+      docksideTransform.quaternion.setFromUnitVectors(courseForward, frame.tangent);
+      docksideTransform.scale.set(1, 1, 1);
+      docksideTransform.updateMatrix();
+      docksideContainers.setMatrixAt(index, docksideTransform.matrix);
+      docksideContainers.setColorAt(index, docksideContainerColors[index % docksideContainerColors.length]);
+    }
+    docksideContainers.instanceMatrix.needsUpdate = true;
+    docksideContainers.instanceColor.needsUpdate = true;
+    docksideContainers.computeBoundingSphere();
+    docksideRoadside.add(docksideContainers);
+
+    const docksideCranePlacements = [
+      { distance: stageTwoWorldStart + 18, side: 1 },
+      { distance: stageTwoWorldStart + 42, side: -1 },
+      { distance: stageTwoWorldStart + 67, side: 1 }
+    ];
+    const docksideCraneMaterial = new THREE.MeshStandardMaterial({ color: 0x173d4a, emissive: 0x08232b, emissiveIntensity: 1.1, roughness: 0.5, metalness: 0.62 });
+    const docksideWarningMaterial = new THREE.MeshStandardMaterial({ color: 0xffb14a, emissive: 0xa7430c, emissiveIntensity: 2.4, roughness: 0.32 });
+    const docksideCraneMasts = new THREE.InstancedMesh(new THREE.BoxGeometry(0.48, 7, 0.48), docksideCraneMaterial, docksideCranePlacements.length);
+    const docksideCraneBooms = new THREE.InstancedMesh(new THREE.BoxGeometry(7, 0.34, 0.34), docksideCraneMaterial, docksideCranePlacements.length);
+    const docksideCraneCables = new THREE.InstancedMesh(new THREE.BoxGeometry(0.08, 3.2, 0.08), docksideCraneMaterial, docksideCranePlacements.length);
+    const docksideCraneHooks = new THREE.InstancedMesh(new THREE.BoxGeometry(0.4, 0.3, 0.4), docksideWarningMaterial, docksideCranePlacements.length);
+    const docksideCraneWeights = new THREE.InstancedMesh(new THREE.BoxGeometry(1.2, 0.8, 1.2), docksideCraneMaterial, docksideCranePlacements.length);
+    docksideCraneMasts.name = 'dockside-crane-mast-pool';
+    docksideCraneBooms.name = 'dockside-crane-boom-pool';
+    docksideCraneCables.name = 'dockside-crane-cable-pool';
+    docksideCraneHooks.name = 'dockside-crane-hook-pool';
+    docksideCraneWeights.name = 'dockside-crane-weight-pool';
+    const docksideCranePools = [docksideCraneMasts, docksideCraneBooms, docksideCraneCables, docksideCraneHooks, docksideCraneWeights];
+    for (let index = 0; index < docksideCranePlacements.length; index++) {
+      const placement = docksideCranePlacements[index];
+      const frame = courseFrameAt(placement.distance);
+      const yaw = Math.atan2(frame.tangent.x, -frame.tangent.z);
+      docksideTransform.rotation.set(0, yaw, 0);
+      docksideTransform.quaternion.setFromEuler(docksideTransform.rotation);
+      docksideTransform.scale.set(1, 1, 1);
+
+      docksideTransform.position.copy(frame.point).addScaledVector(frame.right, placement.side * 12);
+      docksideTransform.position.y += 3.5;
+      docksideTransform.updateMatrix();
+      docksideCraneMasts.setMatrixAt(index, docksideTransform.matrix);
+
+      docksideTransform.position.copy(frame.point).addScaledVector(frame.right, placement.side * 14.6);
+      docksideTransform.position.y += 6.55;
+      docksideTransform.updateMatrix();
+      docksideCraneBooms.setMatrixAt(index, docksideTransform.matrix);
+
+      docksideTransform.position.copy(frame.point).addScaledVector(frame.right, placement.side * 17.2);
+      docksideTransform.position.y += 4.85;
+      docksideTransform.updateMatrix();
+      docksideCraneCables.setMatrixAt(index, docksideTransform.matrix);
+
+      docksideTransform.position.copy(frame.point).addScaledVector(frame.right, placement.side * 17.2);
+      docksideTransform.position.y += 3.2;
+      docksideTransform.updateMatrix();
+      docksideCraneHooks.setMatrixAt(index, docksideTransform.matrix);
+
+      docksideTransform.position.copy(frame.point).addScaledVector(frame.right, placement.side * 10.9);
+      docksideTransform.position.y += 6.25;
+      docksideTransform.updateMatrix();
+      docksideCraneWeights.setMatrixAt(index, docksideTransform.matrix);
+    }
+    for (const pool of docksideCranePools) {
+      pool.instanceMatrix.needsUpdate = true;
+      pool.computeBoundingSphere();
+    }
+    docksideRoadside.add(...docksideCranePools);
+    const docksideNominalPropRoadEdgeGap = 8.4 - 2.6 / 2 - 5;
+    const docksideNominalApronRoadEdgeGap = 9.4 - 8.2 / 2 - 5;
+
     const roadsideGeometry = new THREE.BoxGeometry(0.14, 1.25, 0.14);
     const roadsideMaterial = new THREE.MeshStandardMaterial({ color: 0xffb35a, emissive: 0x6b2b08, emissiveIntensity: 1.2 });
     for (let distance = 10; distance < COURSE_GEOMETRY_LENGTH; distance += 14) {
-      if (distance < stageOneWorldEnd) continue;
+      if (distance < stageTwoWorldEnd) continue;
       const frame = courseFrameAt(distance);
       for (const side of [-1, 1]) {
         const roadsideMarker = new THREE.Mesh(roadsideGeometry, roadsideMaterial);
@@ -924,6 +1093,7 @@
       raceCountdown.hidden = !countdownLabel;
       raceCountdown.dataset.phase = state.mode === 'countdown' ? 'countdown' : 'go';
       if (countdownValue.textContent !== countdownLabel) countdownValue.textContent = countdownLabel;
+      syncStageEnvironment();
       syncEngineAudio();
       syncTrafficMeshes();
       threeRenderer.render(threeScene, threeCamera);
@@ -1114,9 +1284,11 @@
       const course = courseProfileAt(currentCourseProgress());
       const courseLateral = playerCourseLateral();
       const stage = courseStages[state.level];
+      const previousEnvironment = stageEnvironment(courseStages[state.previousLevel]);
       return JSON.stringify({
         coordinateSystem: 'logical 1000x700; origin top-left; x right; y down', mode: state.mode,
-        version: 'v2', rendering: { renderer: 'three', camera: threeCamera.type, trafficMeshes: trafficRoot.children.length, trafficTemplates: trafficTemplates.length, trafficSilhouettes: trafficTypes.map(type => type.silhouette), courseControls: courseCenterlineControls.length, roadSurface: 'wet-asphalt-v1', roadUvs: road.geometry.getAttribute('uv').count, stageOneRoadside: { guardrails: stageOneGuardrails.count, lightPoles: stageOneLightPoles.count } },
+        version: 'v2', rendering: { renderer: 'three', camera: threeCamera.type, trafficMeshes: trafficRoot.children.length, trafficTemplates: trafficTemplates.length, trafficSilhouettes: trafficTypes.map(type => type.silhouette), courseControls: courseCenterlineControls.length, roadSurface: 'wet-asphalt-v1', roadUvs: road.geometry.getAttribute('uv').count, stageOneRoadside: { guardrails: stageOneGuardrails.count, lightPoles: stageOneLightPoles.count }, stageTwoDockside: { roots: threeScene.children.filter(child => child.name === 'stage-two-dockside').length, rootChildren: docksideRoadside.children.length, apronSlabs: docksideAprons.count, stacks: docksideContainerSites.length, containers: docksideContainers.count, cranes: docksideCraneMasts.count, cranePools: docksideCranePools.length, worldStart: +stageTwoWorldStart.toFixed(3), worldEnd: +stageTwoWorldEnd.toFixed(3), roadHalfWidth: 5, nominalRoadEdgeGap: +Math.min(docksideNominalPropRoadEdgeGap, docksideNominalApronRoadEdgeGap).toFixed(2), nominalPropRoadEdgeGap: +docksideNominalPropRoadEdgeGap.toFixed(2), nominalApronRoadEdgeGap: +docksideNominalApronRoadEdgeGap.toFixed(2), stackAnchors: docksideContainerSites.map(site => +site.distance.toFixed(3)), craneAnchors: docksideCranePlacements.map(crane => +crane.distance.toFixed(3)) } },
+        environment: { previous: previousEnvironment.id, current: activeEnvironmentPalette, propSet: stage.environment?.propSet || 'none', blend: +activeEnvironmentBlend.toFixed(3), background: `#${environmentBackground.getHexString()}`, fog: `#${environmentFog.getHexString()}`, sky: `#${environmentSky.getHexString()}`, ground: `#${environmentGround.getHexString()}`, key: `#${environmentKey.getHexString()}`, keyIntensity: +activeEnvironmentKeyIntensity.toFixed(3) },
         course: { segment: course.segment, progress: +course.progress.toFixed(1), length: COURSE_LENGTH, centerX: +course.x.toFixed(2), elevation: +course.y.toFixed(2) },
         player: { type: 'light-cycle', x: +state.player.x.toFixed(1), y: state.player.y, courseLateral: +courseLateral.toFixed(2), steering: +normalizedSteering.toFixed(2), lean: +state.player.lean.toFixed(2), cockpitLean: +(-state.player.lean * 0.16).toFixed(3), horizonRoll: 0, jumpHeight: +(state.player.jumpHeight || 0).toFixed(1), jumpCooldown: +state.player.jumpCooldown.toFixed(2), invulnerable: +state.player.invulnerable.toFixed(2), trailPoints: state.energyTrail.length },
         level: { number: stage.index + 1, name: stage.name, distance: Math.floor(state.levelDistance), target: stage.length, startDistance: stage.startDistance, endDistance: stage.endDistance, roadBlend: +state.levelBlend.toFixed(2) }, roadCenterAtPlayer: +roadCenter(state.player.y).toFixed(1), obstacles: state.obstacles.map(o => ({ type: trafficTypes[o.type].name, silhouette: trafficTypes[o.type].silhouette, lane: o.laneIndex, x: +o.x.toFixed(1), y: +o.y.toFixed(1), distanceAhead: +obstacleDistanceAhead(o).toFixed(1), rendered: Boolean(trafficMeshes.get(o)?.visible) })), score: Math.floor(state.score),

@@ -231,7 +231,25 @@
     threeRenderer.setPixelRatio(Math.min(devicePixelRatio, 2));
     threeRenderer.outputColorSpace = THREE.SRGBColorSpace;
     const threeScene = new THREE.Scene();
-    threeScene.background = new THREE.Color(0x070b14);
+    const environmentTextureLoader = new THREE.TextureLoader();
+    const generatedSkyboxTexture = environmentTextureLoader.load('assets/environment/v2-night-city-skybox-v1.webp');
+    generatedSkyboxTexture.colorSpace = THREE.SRGBColorSpace;
+    generatedSkyboxTexture.mapping = THREE.EquirectangularReflectionMapping;
+    const generatedFacadeTexture = environmentTextureLoader.load('assets/environment/v2-building-facade-v1.webp');
+    generatedFacadeTexture.colorSpace = THREE.SRGBColorSpace;
+    generatedFacadeTexture.wrapS = THREE.RepeatWrapping;
+    generatedFacadeTexture.wrapT = THREE.RepeatWrapping;
+    generatedFacadeTexture.anisotropy = Math.min(8, threeRenderer.capabilities.getMaxAnisotropy());
+    const generatedGroundTexture = environmentTextureLoader.load('assets/environment/v2-city-water-ground-v1.webp');
+    generatedGroundTexture.colorSpace = THREE.SRGBColorSpace;
+    generatedGroundTexture.wrapS = THREE.RepeatWrapping;
+    generatedGroundTexture.wrapT = THREE.RepeatWrapping;
+    generatedGroundTexture.repeat.set(7, 30);
+    generatedGroundTexture.anisotropy = Math.min(8, threeRenderer.capabilities.getMaxAnisotropy());
+    threeScene.background = generatedSkyboxTexture;
+    threeScene.backgroundIntensity = 0.82;
+    threeScene.environment = generatedSkyboxTexture;
+    threeScene.environmentIntensity = 0.34;
     threeScene.fog = new THREE.Fog(0x070b14, 24, 105);
     const threeCamera = new THREE.PerspectiveCamera(66, innerWidth / innerHeight, 0.1, 140);
     threeCamera.position.set(0, 2.35, 8);
@@ -271,7 +289,6 @@
       environmentSky.lerpColors(previous.sky, current.sky, blend);
       environmentKey.lerpColors(previous.key, current.key, blend);
       environmentGround.lerpColors(previous.ground, current.ground, blend);
-      threeScene.background.copy(environmentBackground);
       threeScene.fog.color.copy(environmentFog);
       hemisphereLight.color.copy(environmentSky);
       hemisphereLight.groundColor.copy(environmentGround);
@@ -456,7 +473,7 @@
     const docksideApronDistances = [];
     for (let distance = stageTwoWorldStart + 2.7; distance <= stageTwoWorldEnd - 2.7; distance += 5) docksideApronDistances.push(distance);
     const docksideApronGeometry = new THREE.BoxGeometry(8.2, 0.16, 5.4);
-    const docksideApronMaterial = new THREE.MeshStandardMaterial({ color: 0x101f27, roughness: 0.88, metalness: 0.22 });
+    const docksideApronMaterial = new THREE.MeshStandardMaterial({ map: generatedGroundTexture, color: 0x66808d, roughness: 0.7, metalness: 0.24 });
     const docksideAprons = new THREE.InstancedMesh(docksideApronGeometry, docksideApronMaterial, docksideApronDistances.length * 2);
     docksideAprons.name = 'dockside-apron-pool';
     let docksideApronIndex = 0;
@@ -495,8 +512,8 @@
       containerSiteIndex += 1;
     }
     const docksideContainerGeometry = new THREE.BoxGeometry(2.6, 1.18, 5.2);
-    const docksideContainerMaterial = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.58, metalness: 0.48 });
-    const docksideContainerColors = [new THREE.Color(0x238b96), new THREE.Color(0x406f88), new THREE.Color(0xb45f3c)];
+    const docksideContainerMaterial = new THREE.MeshStandardMaterial({ map: generatedFacadeTexture, emissiveMap: generatedFacadeTexture, emissive: 0x102b35, emissiveIntensity: 0.2, color: 0xffffff, roughness: 0.54, metalness: 0.44 });
+    const docksideContainerColors = [new THREE.Color(0x6b9298), new THREE.Color(0x718596), new THREE.Color(0x9b7969)];
     const docksideContainers = new THREE.InstancedMesh(docksideContainerGeometry, docksideContainerMaterial, docksideContainerPlacements.length);
     docksideContainers.name = 'dockside-container-pool';
     for (let index = 0; index < docksideContainerPlacements.length; index++) {
@@ -656,7 +673,7 @@
     for (let distance = stageFourWorldStart + 3; distance <= stageFourWorldEnd - 3; distance += 6.5) skywayFinDistances.push(distance);
     const skywayBeaconDistances = skywayFinDistances.filter((_, index) => index % 2 === 0);
 
-    const skywayFinMaterial = new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0x173c55, emissiveIntensity: 0.82, roughness: 0.34, metalness: 0.68 });
+    const skywayFinMaterial = new THREE.MeshStandardMaterial({ map: generatedGroundTexture, color: 0xa9c4cf, emissive: 0x173c55, emissiveIntensity: 0.62, roughness: 0.38, metalness: 0.6 });
     const skywayBeaconBaseMaterial = new THREE.MeshStandardMaterial({ color: 0x29465d, roughness: 0.42, metalness: 0.76 });
     const skywayBeaconLightMaterial = new THREE.MeshStandardMaterial({ color: 0xffd16a, emissive: 0xff6a18, emissiveIntensity: 4.2, roughness: 0.18 });
     const skywayFins = new THREE.InstancedMesh(new THREE.BoxGeometry(0.28, 1.8, 2.6), skywayFinMaterial, skywayFinDistances.length * 2);
@@ -711,6 +728,62 @@
     skywayRoadside.add(skywayFins, skywayBeaconBases, skywayBeaconLights);
     const skywayNominalFinRoadEdgeGap = 6 - 0.28 / 2 - 5;
     const skywayNominalBeaconRoadEdgeGap = 5.68 - 0.2 - 5;
+
+    const generatedBuildingPlacements = [];
+    const generatedBuildingStageCounts = [0, 0, 0, 0];
+    const GENERATED_WATER_LEVEL = -0.42;
+    const generatedWater = new THREE.Mesh(
+      new THREE.PlaneGeometry(130, 500),
+      new THREE.MeshStandardMaterial({ map: generatedGroundTexture, color: 0x9ab6c7, roughness: 0.42, metalness: 0.18 })
+    );
+    generatedWater.name = 'generated-city-water-ground';
+    generatedWater.rotation.x = -Math.PI / 2;
+    generatedWater.position.set(15, GENERATED_WATER_LEVEL, -215);
+    threeScene.add(generatedWater);
+    const generatedBuildingGeometry = new THREE.BoxGeometry(1, 1, 1);
+    const generatedBuildingMaterial = new THREE.MeshStandardMaterial({
+      map: generatedFacadeTexture,
+      emissiveMap: generatedFacadeTexture,
+      emissive: 0x183747,
+      emissiveIntensity: 0.34,
+      roughness: 0.48,
+      metalness: 0.42
+    });
+    const generatedBuildingTransform = new THREE.Object3D();
+    const generatedBuildingColors = [new THREE.Color(0x8da8b8), new THREE.Color(0x7da39f), new THREE.Color(0xa381ac), new THREE.Color(0xa7b8c4)];
+    let generatedBuildingSiteIndex = 0;
+    for (let distance = 5; distance <= COURSE_LENGTH - 5; distance += 7.5) {
+      const frame = courseFrameAt(distance);
+      const stageIndex = courseStageAtDistance(distance * COURSE_DISTANCE_SCALE).index;
+      for (const side of [-1, 1]) {
+        const sideSeed = side === -1 ? 1 : 3;
+        const width = 3.4 + ((generatedBuildingSiteIndex * 5 + sideSeed) % 4) * 0.65;
+        const depth = 4.6 + ((generatedBuildingSiteIndex * 3 + sideSeed) % 4) * 0.8;
+        const height = 7.5 + ((generatedBuildingSiteIndex * 7 + sideSeed) % 6) * 2.25 + Math.max(0, frame.point.y);
+        const lateralOffset = 11.5 + ((generatedBuildingSiteIndex + sideSeed) % 4) * 1.25;
+        const clearance = lateralOffset - width / 2 - 5;
+        generatedBuildingTransform.position.copy(frame.point).addScaledVector(frame.right, side * lateralOffset);
+        generatedBuildingTransform.position.y = GENERATED_WATER_LEVEL + height / 2;
+        generatedBuildingTransform.rotation.set(0, Math.atan2(frame.tangent.x, -frame.tangent.z), 0);
+        generatedBuildingTransform.scale.set(width, height, depth);
+        generatedBuildingTransform.updateMatrix();
+        generatedBuildingPlacements.push({ distance, side, stageIndex, width, depth, height, lateralOffset, clearance, matrix: generatedBuildingTransform.matrix.clone() });
+        generatedBuildingStageCounts[stageIndex] += 1;
+      }
+      generatedBuildingSiteIndex += 1;
+    }
+    const generatedCityBuildings = new THREE.InstancedMesh(generatedBuildingGeometry, generatedBuildingMaterial, generatedBuildingPlacements.length);
+    generatedCityBuildings.name = 'generated-city-buildings';
+    for (let index = 0; index < generatedBuildingPlacements.length; index++) {
+      const placement = generatedBuildingPlacements[index];
+      generatedCityBuildings.setMatrixAt(index, placement.matrix);
+      generatedCityBuildings.setColorAt(index, generatedBuildingColors[placement.stageIndex]);
+    }
+    generatedCityBuildings.instanceMatrix.needsUpdate = true;
+    generatedCityBuildings.instanceColor.needsUpdate = true;
+    generatedCityBuildings.computeBoundingSphere();
+    threeScene.add(generatedCityBuildings);
+    const generatedBuildingMinimumClearance = Math.min(...generatedBuildingPlacements.map(placement => placement.clearance));
 
     threeScene.add(threeCamera);
     const cockpit = new THREE.Group();
@@ -1378,7 +1451,7 @@
       return JSON.stringify({
         coordinateSystem: 'logical 1000x700; origin top-left; x right; y down', mode: state.mode,
         version: 'v2', rendering: { renderer: 'three', camera: threeCamera.type, trafficMeshes: trafficRoot.children.length, trafficTemplates: trafficTemplates.length, trafficTemplateParts: trafficTemplates.map(template => template.children.length), trafficSilhouettes: trafficTypes.map(type => type.silhouette), trafficUvTextures: trafficTypes.map(type => type.src), trafficTexturesLoaded: trafficTextures.map(texture => Boolean(texture.image?.complete && texture.image.naturalWidth)), trafficSpawnDistance: TRAFFIC_SPAWN_DISTANCE, trafficVisibleDistance: TRAFFIC_VISIBLE_DISTANCE, trafficApproachMultiplier: TRAFFIC_APPROACH_MULTIPLIER, courseControls: courseCenterlineControls.length, roadSurface: 'wet-asphalt-v1', roadUvs: road.geometry.getAttribute('uv').count, stageOneRoadside: { guardrails: stageOneGuardrails.count, lightPoles: stageOneLightPoles.count }, stageTwoDockside: { roots: threeScene.children.filter(child => child.name === 'stage-two-dockside').length, rootChildren: docksideRoadside.children.length, apronSlabs: docksideAprons.count, stacks: docksideContainerSites.length, containers: docksideContainers.count, cranes: docksideCraneMasts.count, cranePools: docksideCranePools.length, worldStart: +stageTwoWorldStart.toFixed(3), worldEnd: +stageTwoWorldEnd.toFixed(3), roadHalfWidth: 5, nominalRoadEdgeGap: +Math.min(docksideNominalPropRoadEdgeGap, docksideNominalApronRoadEdgeGap).toFixed(2), nominalPropRoadEdgeGap: +docksideNominalPropRoadEdgeGap.toFixed(2), nominalApronRoadEdgeGap: +docksideNominalApronRoadEdgeGap.toFixed(2), stackAnchors: docksideContainerSites.map(site => +site.distance.toFixed(3)), craneAnchors: docksideCranePlacements.map(crane => +crane.distance.toFixed(3)) }, stageThreeNeon: { roots: threeScene.children.filter(child => child.name === 'stage-three-neon-tunnel').length, rootChildren: neonTunnel.children.length, frames: neonFrameDistances.length, uprights: neonUprights.count, crossbars: neonCrossbars.count, lightStrips: neonCyanStrips.count + neonMagentaStrips.count, signs: neonCyanSigns.count + neonMagentaSigns.count, signPools: 2, worldStart: +stageThreeWorldStart.toFixed(3), worldEnd: +stageThreeWorldEnd.toFixed(3), roadHalfWidth: 5, nominalUprightRoadEdgeGap: +neonNominalUprightRoadEdgeGap.toFixed(2), nominalSignRoadEdgeGap: +neonNominalSignRoadEdgeGap.toFixed(2), frameAnchors: neonFrameDistances.map(distance => +distance.toFixed(3)) }, stageFourSkyway: { roots: threeScene.children.filter(child => child.name === 'stage-four-skyway').length, rootChildren: skywayRoadside.children.length, finSites: skywayFinDistances.length, fins: skywayFins.count, beaconSites: skywayBeaconDistances.length, beaconBases: skywayBeaconBases.count, beaconLights: skywayBeaconLights.count, worldStart: +stageFourWorldStart.toFixed(3), worldEnd: +stageFourWorldEnd.toFixed(3), roadHalfWidth: 5, nominalFinRoadEdgeGap: +skywayNominalFinRoadEdgeGap.toFixed(2), nominalBeaconRoadEdgeGap: +skywayNominalBeaconRoadEdgeGap.toFixed(2), finAnchors: skywayFinDistances.map(distance => +distance.toFixed(3)), beaconAnchors: skywayBeaconDistances.map(distance => +distance.toFixed(3)) } },
-        environment: { previous: previousEnvironment.id, current: activeEnvironmentPalette, propSet: stage.environment?.propSet || 'none', blend: +activeEnvironmentBlend.toFixed(3), background: `#${environmentBackground.getHexString()}`, fog: `#${environmentFog.getHexString()}`, sky: `#${environmentSky.getHexString()}`, ground: `#${environmentGround.getHexString()}`, key: `#${environmentKey.getHexString()}`, keyIntensity: +activeEnvironmentKeyIntensity.toFixed(3) },
+        environment: { previous: previousEnvironment.id, current: activeEnvironmentPalette, propSet: stage.environment?.propSet || 'none', blend: +activeEnvironmentBlend.toFixed(3), background: 'generated-night-city-skybox', fog: `#${environmentFog.getHexString()}`, sky: `#${environmentSky.getHexString()}`, ground: 'generated-city-water', key: `#${environmentKey.getHexString()}`, keyIntensity: +activeEnvironmentKeyIntensity.toFixed(3), generated: { skybox: 'assets/environment/v2-night-city-skybox-v1.webp', facade: 'assets/environment/v2-building-facade-v1.webp', ground: 'assets/environment/v2-city-water-ground-v1.webp', texturesLoaded: [generatedSkyboxTexture, generatedFacadeTexture, generatedGroundTexture].map(texture => Boolean(texture.image?.complete && texture.image.naturalWidth)), buildings: generatedCityBuildings.count, buildingStageCounts: generatedBuildingStageCounts, minimumRoadClearance: +generatedBuildingMinimumClearance.toFixed(2), groundCoverage: { width: 130, length: 500, waterLevel: GENERATED_WATER_LEVEL } } },
         course: { segment: course.segment, progress: +course.progress.toFixed(1), length: COURSE_LENGTH, centerX: +course.x.toFixed(2), elevation: +course.y.toFixed(2) },
         player: { type: 'light-cycle', x: +state.player.x.toFixed(1), y: state.player.y, courseLateral: +courseLateral.toFixed(2), steering: +normalizedSteering.toFixed(2), lean: +state.player.lean.toFixed(2), cockpitLean: +(-state.player.lean * 0.16).toFixed(3), horizonRoll: 0, jumpHeight: +(state.player.jumpHeight || 0).toFixed(1), jumpCooldown: +state.player.jumpCooldown.toFixed(2), invulnerable: +state.player.invulnerable.toFixed(2), trailPoints: state.energyTrail.length },
         level: { number: stage.index + 1, name: stage.name, distance: Math.floor(state.levelDistance), target: stage.length, startDistance: stage.startDistance, endDistance: stage.endDistance, roadBlend: +state.levelBlend.toFixed(2) }, roadCenterAtPlayer: +roadCenter(state.player.y).toFixed(1), obstacles: state.obstacles.map(o => ({ type: trafficTypes[o.type].name, silhouette: trafficTypes[o.type].silhouette, texture: trafficTypes[o.type].src, lane: o.laneIndex, x: +o.x.toFixed(1), y: +o.y.toFixed(1), distanceAhead: +obstacleDistanceAhead(o).toFixed(1), secondsToPlayer: +Math.max(0, obstacleDistanceAhead(o) * COURSE_DISTANCE_SCALE / (state.speed * TRAFFIC_APPROACH_MULTIPLIER)).toFixed(2), rendered: Boolean(trafficMeshes.get(o)?.visible) })), score: Math.floor(state.score),

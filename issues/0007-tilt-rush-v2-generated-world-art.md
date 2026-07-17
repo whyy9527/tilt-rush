@@ -10,11 +10,11 @@ Give the complete V2 course a coherent finished night-city world instead of flat
 
 ## Chosen Slice
 
-Generate and integrate three purpose-built raster assets: one equirectangular night-city skybox, one futuristic building-facade texture atlas, and one surrounding-city ground texture; map them onto the existing Three.js course and reusable low-poly environment geometry.
+Generate one equirectangular night-city skybox and one futuristic building-facade texture, derive a seamless city-water ground texture from the generated skybox water, and map all three assets onto the existing Three.js course and reusable low-poly environment geometry.
 
 ## Scope
 
-- Generate the skybox, facade atlas, and ground texture with the built-in image generation tool.
+- Generate the skybox and facade texture with the built-in image generation tool, then derive the seamless water ground from the generated skybox without introducing an older or non-generated source.
 - Save versioned final assets under `assets/environment/`.
 - Render the skybox as scene background/environment imagery rather than a flat color.
 - Add textured roadside building masses outside the road envelope across all four stages.

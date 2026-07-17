@@ -1,4 +1,4 @@
-🟡 # tilt-rush: Make V2 traffic approach early and visibly
+📌 # tilt-rush: Make V2 traffic approach early and visibly
 
 Created: 2026-07-17
 Source: Player feedback that traffic still pops in and does not feel oncoming
@@ -38,4 +38,3 @@ Spawn traffic 72 world units ahead and advance its existing logical collision en
 - Separate steering, collision, jump, and cleanup scenarios.
 - Far, mid, and close screenshots on desktop and 390x844 mobile.
 - Browser-error check and `git diff --check`.
-

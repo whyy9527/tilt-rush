@@ -1,4 +1,4 @@
-🟡 # tilt-rush: Publish the verified V1 and V2 static packages
+📌 # tilt-rush: Publish the verified V1 and V2 static packages
 
 Created: 2026-07-17
 Source: Player request to publish this V2 update and the V1 mobile-road fix unless already released
@@ -40,4 +40,3 @@ Push the V1 source fix as `v1.0.4`, push the V2 source update on `main`, copy ea
 - GitHub Actions run status for the static test sync.
 - `curl -I` against explicit V1/V2 entry files and generated assets.
 - Playwright smoke checks against both test CDN URLs.
-

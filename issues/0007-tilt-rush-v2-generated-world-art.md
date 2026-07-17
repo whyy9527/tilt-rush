@@ -1,4 +1,4 @@
-📌 # tilt-rush: Replace the V2 gray-box world with generated environment art
+✅ # tilt-rush: Replace the V2 gray-box world with generated environment art
 
 Created: 2026-07-17
 Source: Player request for a complete map scene, finished roadside buildings, and an essential skybox using image generation
@@ -28,11 +28,11 @@ Generate one equirectangular night-city skybox and one futuristic building-facad
 
 ## Acceptance Criteria
 
-- [ ] Generated sky, facade, and ground assets exist in the repository and are loaded by V2.
-- [ ] The camera never reveals a flat clear-color void; the skybox remains visible through all stages.
-- [ ] Textured building silhouettes surround the road without entering the five-unit road half-width.
-- [ ] Ground imagery covers the complete 370-world-unit course.
-- [ ] Straight, Dockside, Neon, Skyway, completion, restart, and 390x844 screenshots show a coherent finished environment with no browser errors.
+- [x] Generated sky, facade, and ground assets exist in the repository and are loaded by V2.
+- [x] The camera never reveals a flat clear-color void; the skybox remains visible through all stages.
+- [x] Textured building silhouettes surround the road without entering the five-unit road half-width.
+- [x] Ground imagery covers the complete 370-world-unit course.
+- [x] Straight, Dockside, Neon, Skyway, completion, restart, and 390x844 screenshots show a coherent finished environment with no browser errors.
 
 ## Verification
 
@@ -40,3 +40,16 @@ Generate one equirectangular night-city skybox and one futuristic building-facad
 - Stage checkpoint screenshots plus completion/restart checks.
 - Road-clearance checks for every generated building anchor.
 - Standard web-game client and `git diff --check`.
+
+## Resolution
+
+- Closed at: 2026-07-17 10:39 Asia/Shanghai
+- Commit: `42f579f`
+- Verification:
+  - Built-in Image 2 outputs — inspected the 1774x887 skybox and 1254x1254 facade; inspected the final 1024x1024 seamless water derivative from the generated skybox.
+  - Standard web-game client — passed all three texture loads, 98-building inventory, 69-unit traffic readability, screenshot, and browser-error checks.
+  - Four-stage automated drive — passed Stage 1, Dockside, Neon, Skyway, completion with real collisions enabled, and restart without duplicating environment instances.
+  - Desktop and 390x844 Skyway runs — passed all texture loads, at least one remaining life, exact viewport scroll width, and no browser errors.
+  - Visual review — inspected generated assets plus Stage 1, Dockside, Neon, Skyway, completion, jump, traffic, and mobile screenshots.
+  - `git diff --check` — passed.
+- Notes: The image service rejected three separate ground-only generations at its network layer. The shipped ground is therefore a seamless local derivative of the successfully generated skybox water, keeping every new world pixel sourced from this run's Image 2 output without switching models.

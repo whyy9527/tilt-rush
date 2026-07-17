@@ -69,6 +69,8 @@
     .race-countdown[hidden] { display: none; }
     #countdown-value { display: grid; width: clamp(116px, 18vw, 190px); aspect-ratio: 1; place-items: center; border: 2px solid #ff815b99; border-radius: 50%; background: radial-gradient(circle, #182a3de8 0 42%, #07111ecf 72%); box-shadow: 0 0 0 8px #ff542e14, 0 0 48px #ff542e59, inset 0 0 36px #050912; color: #fff4ed; font-size: clamp(70px, 12vw, 132px); font-weight: 900; font-variant-numeric: tabular-nums; line-height: 1; text-shadow: 0 0 24px #ff5b36; }
     .race-countdown[data-phase="go"] #countdown-value { width: clamp(150px, 23vw, 240px); aspect-ratio: 1.4; border-radius: 28px 8px; color: #ffb092; font-size: clamp(52px, 9vw, 96px); }
+    .jump-feedback { position: fixed; z-index: 2; left: 50%; bottom: 18%; padding: 9px 22px; border: 1px solid #8fffe599; border-radius: 5px 16px; background: #061827d9; box-shadow: 0 0 36px #45ffe38a, inset 3px 0 #67ffe7; color: #d9fffa; font-size: clamp(24px, 4vw, 44px); font-weight: 900; letter-spacing: .18em; pointer-events: none; opacity: 0; transform: translate(-50%, 24px) scale(.78); transition: opacity 90ms linear, transform 120ms ease-out; }
+    .jump-feedback[data-active="true"] { opacity: 1; transform: translate(-50%, 0) scale(1); }
     @media (max-width: 760px) { .topbar { inset: 10px 10px auto; gap: 8px; } .race-hud { width: 58vw; } .speed-hud { width: 37vw; } #hud-speed { font-size: 38px; } .actions > button { display: none; } .input-switch button { padding-inline: 8px; } .race-heading { padding: 10px 12px 7px; } #hud-stage-name { font-size: 16px; } }
   </style>
   <script type="importmap">
@@ -95,14 +97,15 @@
     <section class="panel speed-hud" id="telemetry" aria-label="Speed and race stats">
       <div class="speed-top"><span id="hud-speed">220</span><span class="speed-meta">KM/H<br><b id="hud-gear">2</b> GEAR</span></div>
       <div class="rev-track"><div id="rev-fill"></div></div>
-      <div class="race-stats"><span class="race-stat">Score<strong id="hud-score">0</strong></span><span class="race-stat">Best<strong id="hud-best">0</strong></span><span class="race-stat">Integrity<strong id="hud-lives">●●●</strong></span></div>
+      <div class="race-stats"><span class="race-stat">Score<strong id="hud-score">0</strong></span><span class="race-stat">Best<strong id="hud-best">0</strong></span><span class="race-stat">Integrity<strong id="hud-lives">●●●●</strong></span></div>
     </section>
   </div>
   <div class="race-countdown" id="race-countdown" data-phase="countdown" role="status" aria-live="assertive" hidden><span id="countdown-value">3</span></div>
+  <div class="jump-feedback" id="jump-feedback" data-active="false" aria-hidden="true">JUMP</div>
   <div class="menu" id="menu">
     <div class="card">
       <h1>Tilt Rush V2</h1>
-      <p id="message">Tilt your head to carve. Flick up to jump traffic.<br>Camera video stays on this device and is never uploaded.</p>
+      <p id="message">Tilt your head to carve. Quickly lift your chin to jump traffic.<br>Camera video stays on this device and is never uploaded.</p>
       <p>First-person edition · <kbd>←</kbd> <kbd>→</kbd> steer · <kbd>Space</kbd> jump · <kbd>F</kbd> fullscreen</p>
       <button id="start" type="button">Start run</button>
     </div>
@@ -136,6 +139,7 @@
     const hudLives = document.querySelector('#hud-lives');
     const raceCountdown = document.querySelector('#race-countdown');
     const countdownValue = document.querySelector('#countdown-value');
+    const jumpFeedback = document.querySelector('#jump-feedback');
     const centerButton = document.querySelector('#center');
     const fullscreenButton = document.querySelector('#fullscreen');
     const menu = document.querySelector('#menu');
@@ -957,6 +961,7 @@
 
     const COUNTDOWN_SECONDS = 3;
     const GO_DISPLAY_SECONDS = 0.65;
+    const HEAD_JUMP_THRESHOLD = -0.065;
     const DEFAULT_GAMEPLAY = Object.freeze({ startingLives: 4, startingSpeed: 220, acceleration: 7, maximumSpeed: 460 });
     const state = {
       mode: 'ready', score: 0, best: Number(localStorage.getItem('tilt-rush-v2-best') || 0), lives: DEFAULT_GAMEPLAY.startingLives, clears: 0, jumps: 0, flow: 0,
@@ -1050,6 +1055,10 @@
       state.player.jumpPulse = 1;
       state.jumps += 1;
       for (let i = 0; i < 12; i++) state.particles.push({ x: state.player.x, y: state.player.y + 45, vx: (i - 5.5) * 18, vy: 40 + Math.abs(i - 5.5) * 8, life: .42, jump: true });
+    }
+
+    function shouldTriggerHeadJump(pitchDelta) {
+      return pitchDelta <= HEAD_JUMP_THRESHOLD;
     }
 
     function flowMultiplier() {
@@ -1155,13 +1164,15 @@
       hudFlow.textContent = `FLOW ${state.flow} · ×${flowMultiplier().toFixed(1)}`; hudFlow.dataset.active = String(state.flow > 0);
       hudSpeed.textContent = displaySpeed; hudGear.textContent = gear; revFill.style.width = `${Math.min(100, 28 + (displaySpeed % 85) / 85 * 72)}%`;
       hudScore.textContent = Math.floor(state.score); hudBest.textContent = Math.max(state.best, Math.floor(state.score)); hudLives.textContent = `${'●'.repeat(state.lives)}${'○'.repeat(DEFAULT_GAMEPLAY.startingLives - state.lives)}`;
+      jumpFeedback.dataset.active = String(state.player.jumpPulse > 0);
     }
 
     function render() {
       const cameraFrame = courseFrameAt(currentCourseProgress());
       const targetFrame = courseFrameAt(cameraFrame.progress + 18);
       const lateral = playerCourseLateral() * 3.5;
-      const jumpOffset = (state.player.jumpHeight || 0) / 90 * 0.62;
+      const jumpRatio = (state.player.jumpHeight || 0) / 90;
+      const jumpOffset = jumpRatio * 1.15;
       const target = targetFrame.point.clone().addScaledVector(targetFrame.right, lateral);
       threeCamera.position.copy(cameraFrame.point).addScaledVector(cameraFrame.right, lateral);
       threeCamera.position.y += 2.35 + jumpOffset;
@@ -1169,6 +1180,8 @@
       threeCamera.up.set(0, 1, 0);
       threeCamera.lookAt(target);
       cockpit.rotation.z = -state.player.lean * 0.16;
+      cockpit.rotation.x = jumpRatio * 0.035 - state.player.jumpPulse * 0.08;
+      cockpit.position.y = -jumpRatio * 0.22;
       const countdownLabel = state.mode === 'countdown' ? String(Math.max(1, Math.ceil(state.countdownRemaining - 0.001))) : state.countdownGoRemaining > 0 ? 'GO' : '';
       raceCountdown.hidden = !countdownLabel;
       raceCountdown.dataset.phase = state.mode === 'countdown' ? 'countdown' : 'go';
@@ -1297,14 +1310,14 @@
             calibrationFill.style.width = `${calibrationPercent}%`; calibrationProgress.setAttribute('aria-valuenow', String(calibrationPercent));
             if (calibrationStableMs >= 1200 && cameraSamples.length >= 8) {
               neutralRoll = median(cameraSamples.map(sample => sample.roll)); neutralPitch = median(cameraSamples.map(sample => sample.pitch)); previousCameraPitch = cameraPitch;
-              cameraState = 'ready'; status.textContent = 'Camera controls active'; status.dataset.connected = 'true'; cameraOverlay.hidden = true; updateInputControls();
+              cameraState = 'ready'; status.textContent = 'Camera active · lift chin to jump'; status.dataset.connected = 'true'; cameraOverlay.hidden = true; updateInputControls();
             }
           } else if (cameraState === 'ready') {
-            status.textContent = 'Camera controls active';
+            status.textContent = 'Camera active · lift chin to jump';
             const rollDelta = cameraRoll - neutralRoll;
             cameraTilt = Math.abs(rollDelta) < 3 ? 0 : Math.max(-1, Math.min(1, -rollDelta / 22));
             cameraPitchDelta = cameraPitch - previousCameraPitch; previousCameraPitch += cameraPitchDelta * .35;
-            if (Math.abs(cameraPitchDelta) > .115) jump();
+            if (shouldTriggerHeadJump(cameraPitchDelta)) jump();
           }
         } else if (cameraState === 'calibrating') {
           calibrationStableMs = 0; cameraSamples = []; calibrationLastFrame = now; calibrationFill.style.width = '0%'; calibrationProgress.setAttribute('aria-valuenow', '0');
@@ -1370,9 +1383,10 @@
         player: { type: 'light-cycle', x: +state.player.x.toFixed(1), y: state.player.y, courseLateral: +courseLateral.toFixed(2), steering: +normalizedSteering.toFixed(2), lean: +state.player.lean.toFixed(2), cockpitLean: +(-state.player.lean * 0.16).toFixed(3), horizonRoll: 0, jumpHeight: +(state.player.jumpHeight || 0).toFixed(1), jumpCooldown: +state.player.jumpCooldown.toFixed(2), invulnerable: +state.player.invulnerable.toFixed(2), trailPoints: state.energyTrail.length },
         level: { number: stage.index + 1, name: stage.name, distance: Math.floor(state.levelDistance), target: stage.length, startDistance: stage.startDistance, endDistance: stage.endDistance, roadBlend: +state.levelBlend.toFixed(2) }, roadCenterAtPlayer: +roadCenter(state.player.y).toFixed(1), obstacles: state.obstacles.map(o => ({ type: trafficTypes[o.type].name, silhouette: trafficTypes[o.type].silhouette, texture: trafficTypes[o.type].src, lane: o.laneIndex, x: +o.x.toFixed(1), y: +o.y.toFixed(1), distanceAhead: +obstacleDistanceAhead(o).toFixed(1), secondsToPlayer: +Math.max(0, obstacleDistanceAhead(o) * COURSE_DISTANCE_SCALE / (state.speed * TRAFFIC_APPROACH_MULTIPLIER)).toFixed(2), rendered: Boolean(trafficMeshes.get(o)?.visible) })), score: Math.floor(state.score),
         best: state.best, lives: state.lives, clears: state.clears, jumps: state.jumps, speed: Math.round(state.speed), difficulty: { profile: 'forgiving-default', ...DEFAULT_GAMEPLAY }, flow: { chain: state.flow, multiplier: +flowMultiplier().toFixed(1) }, countdown: { remaining: +state.countdownRemaining.toFixed(3), goRemaining: +state.countdownGoRemaining.toFixed(3), label: countdownValue.textContent, visible: !raceCountdown.hidden },
-        connected: cameraState === 'ready', input: cameraState === 'ready' ? 'camera' : 'keyboard', camera: { state: cameraState, roll: +cameraRoll.toFixed(2), pitch: +cameraPitch.toFixed(3), pitchDelta: +cameraPitchDelta.toFixed(3), tilt: +cameraTilt.toFixed(2), calibrationQuality: cameraPreview.dataset.quality, calibrationProgress: Math.min(100, Math.round(calibrationStableMs / 1200 * 100)) }, audio: { enabled: false, context: 'removed', graphs: 0 }, view: 'first-person', fullscreen: Boolean(document.fullscreenElement)
+        connected: cameraState === 'ready', input: cameraState === 'ready' ? 'camera' : 'keyboard', camera: { state: cameraState, roll: +cameraRoll.toFixed(2), pitch: +cameraPitch.toFixed(3), pitchDelta: +cameraPitchDelta.toFixed(3), tilt: +cameraTilt.toFixed(2), jumpThreshold: HEAD_JUMP_THRESHOLD, jumpDirection: 'negative-pitch-delta', calibrationQuality: cameraPreview.dataset.quality, calibrationProgress: Math.min(100, Math.round(calibrationStableMs / 1200 * 100)) }, jumpFeedback: { active: state.player.jumpPulse > 0, label: jumpFeedback.textContent }, audio: { enabled: false, context: 'removed', graphs: 0 }, view: 'first-person', fullscreen: Boolean(document.fullscreenElement)
       });
     };
+    window.evaluate_head_jump = pitchDelta => shouldTriggerHeadJump(Number(pitchDelta));
     window.advanceTime = ms => {
       testingMode = true;
       const steps = Math.max(1, Math.round(ms / (1000 / 60)));

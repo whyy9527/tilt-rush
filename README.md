@@ -2,7 +2,7 @@
 
 The active first-person edition of Tilt Rush, an open-source browser racing game controlled with head movement through a webcam. Lean to steer, flick upward to jump traffic, or use the keyboard fallback.
 
-The completed top-down V1 is maintained at the annotated `v1.0.3` tag. Active `main` development is the separate first-person V2 line.
+The completed top-down V1 is maintained at the annotated `v1.0.4` tag. Active `main` development is the separate first-person V2 line.
 
 ## Play
 

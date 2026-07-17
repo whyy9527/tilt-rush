@@ -1,4 +1,4 @@
-🟡 # tilt-rush: Replace the V2 gray-box world with generated environment art
+📌 # tilt-rush: Replace the V2 gray-box world with generated environment art
 
 Created: 2026-07-17
 Source: Player request for a complete map scene, finished roadside buildings, and an essential skybox using image generation
@@ -40,4 +40,3 @@ Generate and integrate three purpose-built raster assets: one equirectangular ni
 - Stage checkpoint screenshots plus completion/restart checks.
 - Road-clearance checks for every generated building anchor.
 - Standard web-game client and `git diff --check`.
-

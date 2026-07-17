@@ -1,4 +1,4 @@
-📌 # tilt-rush: Make the V2 upward-head jump obvious
+✅ # tilt-rush: Make the V2 upward-head jump obvious
 
 Created: 2026-07-17
 Source: Player feedback that lifting the head does not clearly trigger or show a jump
@@ -27,10 +27,10 @@ Detect only a negative calibrated pitch delta at a lower threshold, then amplify
 
 ## Acceptance Criteria
 
-- [ ] An upward pitch delta beyond the threshold triggers one jump when cooldown permits.
-- [ ] Equal downward pitch movement does not trigger a jump.
-- [ ] The first-person camera lift, cockpit motion, and `JUMP` pulse are visibly present during the jump.
-- [ ] Space still triggers the same jump and one jump can clear one visible vehicle without damage.
+- [x] An upward pitch delta beyond the threshold triggers one jump when cooldown permits.
+- [x] Equal downward pitch movement does not trigger a jump.
+- [x] The first-person camera lift, cockpit motion, and `JUMP` pulse are visibly present during the jump.
+- [x] Space still triggers the same jump and one jump can clear one visible vehicle without damage.
 
 ## Verification
 
@@ -38,3 +38,14 @@ Detect only a negative calibrated pitch delta at a lower threshold, then amplify
 - Keyboard jump and traffic-clear state checks.
 - Jump apex screenshot on desktop and mobile.
 - Browser-error check and `git diff --check`.
+
+## Resolution
+
+- Closed at: 2026-07-17 09:28 Asia/Shanghai
+- Commit: `2a34f4f`
+- Verification:
+  - Production gesture decision — passed at and beyond `-0.065`; smaller upward movement and positive/downward movement did not trigger.
+  - Standard web-game client — passed active `JUMP` feedback, 52-unit lift screenshot, telemetry, and browser-error checks.
+  - Desktop and 390x844 distance-triggered jump flows — passed 80.6-unit apex, visible cockpit/feedback motion, one jump, one clear, and four lives retained.
+  - `git diff --check` — passed.
+- Notes: Both camera and Space input still feed the same jump function; only the camera gesture decision and presentation changed.

@@ -1,4 +1,4 @@
-🟡 # tilt-rush: Make the V2 upward-head jump obvious
+📌 # tilt-rush: Make the V2 upward-head jump obvious
 
 Created: 2026-07-17
 Source: Player feedback that lifting the head does not clearly trigger or show a jump
@@ -38,4 +38,3 @@ Detect only a negative calibrated pitch delta at a lower threshold, then amplify
 - Keyboard jump and traffic-clear state checks.
 - Jump apex screenshot on desktop and mobile.
 - Browser-error check and `git diff --check`.
-
